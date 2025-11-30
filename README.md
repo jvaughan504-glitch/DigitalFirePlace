@@ -12,6 +12,7 @@ ESP32 HTTP server. The mode button cycles between **Fire** (animation only), **F
 (animation with thermostat control), and **Heat** (thermostat control with the flame animation
 disabled).
 
+
 ## Required Arduino libraries
 
 Install the following Arduino libraries via the Library Manager:
@@ -28,6 +29,7 @@ Install the following Arduino libraries via the Library Manager:
 3. Ensure the I2C address in `config.h` matches your OLED (default `0x3C`). Adjust pin
    assignments, thermistor calibration constants, and Wi-Fi credentials if your wiring or
    network differs.
+   assignments and thermistor calibration constants if your wiring differs.
 4. Click **Sketch → Verify/Compile** to build the firmware.
 5. Click **Sketch → Upload** to flash the firmware to your board.
 
