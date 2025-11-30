@@ -11,7 +11,6 @@ static constexpr uint8_t kButtonTempUp = 25;
 static constexpr uint8_t kButtonTempDown = 26;
 static constexpr uint8_t kButtonBrightUp = 27;
 static constexpr uint8_t kButtonBrightDown = 14;
-static constexpr uint8_t kButtonMode = 32;
 
 // NeoPixel configuration
 static constexpr uint16_t kNeoPixelCount = 14;

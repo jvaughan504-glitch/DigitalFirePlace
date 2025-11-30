@@ -33,7 +33,7 @@ ButtonState buttonTempUp{FireplaceConfig::kButtonTempUp, false, 0, 0, false};
 ButtonState buttonTempDown{FireplaceConfig::kButtonTempDown, false, 0, 0, false};
 ButtonState buttonBrightUp{FireplaceConfig::kButtonBrightUp, false, 0, 0, false};
 ButtonState buttonBrightDown{FireplaceConfig::kButtonBrightDown, false, 0, 0, false};
-ButtonState buttonMode{FireplaceConfig::kButtonMode, false, 0, 0, false};
+
 
 Adafruit_SSD1306 display(128, 64, &Wire, FireplaceConfig::kOledResetPin);
 Adafruit_NeoPixel strip(FireplaceConfig::kNeoPixelCount, FireplaceConfig::kNeoPixelPin,
@@ -41,40 +41,7 @@ Adafruit_NeoPixel strip(FireplaceConfig::kNeoPixelCount, FireplaceConfig::kNeoPi
 float targetTemperatureC = 21.0f;
 uint8_t targetBrightness = 160;
 FireAnimation::State fireState{targetBrightness, 0};
-enum class OperatingMode { kFireOnly, kFireAndHeat, kHeatOnly };
-
 bool heaterActive = false;
-OperatingMode operatingMode = OperatingMode::kFireAndHeat;
-
-const char *modeLabel() {
-  switch (operatingMode) {
-    case OperatingMode::kFireOnly:
-      return "Fire";
-    case OperatingMode::kFireAndHeat:
-      return "Fire+Heat";
-    case OperatingMode::kHeatOnly:
-      return "Heat";
-  }
-  return "Fire+Heat";
-}
-
-void cycleMode() {
-  switch (operatingMode) {
-    case OperatingMode::kFireOnly:
-      operatingMode = OperatingMode::kFireAndHeat;
-      break;
-    case OperatingMode::kFireAndHeat:
-      operatingMode = OperatingMode::kHeatOnly;
-      break;
-    case OperatingMode::kHeatOnly:
-      operatingMode = OperatingMode::kFireOnly;
-      break;
-  }
-}
-
-uint8_t effectiveBrightness() {
-  return operatingMode == OperatingMode::kHeatOnly ? 0 : targetBrightness;
-}
 
 ButtonEvent updateButton(ButtonState &button) {
   const uint32_t now = millis();
@@ -148,14 +115,9 @@ void updateDisplay(float currentTemperatureC) {
   display.print("C");
 
   display.setTextSize(1);
-  display.setCursor(80, 0);
-  display.print("Mode:");
-  display.setCursor(80, 10);
-  display.print(modeLabel());
-
   display.setCursor(0, 58);
   display.print("Bright:");
-  display.print(effectiveBrightness());
+  display.print(targetBrightness);
 
   display.setCursor(80, 58);
   display.print(heaterActive ? "HEAT ON" : "HEAT OFF");
@@ -164,20 +126,13 @@ void updateDisplay(float currentTemperatureC) {
 }
 
 void updateHeater(float currentTemperatureC) {
-  const bool heatEnabled = operatingMode != OperatingMode::kFireOnly;
-  if (!heatEnabled) {
-    heaterActive = false;
-  } else {
-    const float lowerThreshold =
-        targetTemperatureC - (FireplaceConfig::kHysteresis / 2.0f);
-    const float upperThreshold =
-        targetTemperatureC + (FireplaceConfig::kHysteresis / 2.0f);
+  const float lowerThreshold = targetTemperatureC - (FireplaceConfig::kHysteresis / 2.0f);
+  const float upperThreshold = targetTemperatureC + (FireplaceConfig::kHysteresis / 2.0f);
 
-    if (!heaterActive && currentTemperatureC <= lowerThreshold) {
-      heaterActive = true;
-    } else if (heaterActive && currentTemperatureC >= upperThreshold) {
-      heaterActive = false;
-    }
+  if (!heaterActive && currentTemperatureC <= lowerThreshold) {
+    heaterActive = true;
+  } else if (heaterActive && currentTemperatureC >= upperThreshold) {
+    heaterActive = false;
   }
   digitalWrite(FireplaceConfig::kRelayPin, heaterActive ? HIGH : LOW);
 }
@@ -187,7 +142,6 @@ void handleButtons() {
   const ButtonEvent tempDownEvent = updateButton(buttonTempDown);
   const ButtonEvent brightUpEvent = updateButton(buttonBrightUp);
   const ButtonEvent brightDownEvent = updateButton(buttonBrightDown);
-  const ButtonEvent modeEvent = updateButton(buttonMode);
 
   if (tempUpEvent != ButtonEvent::kNone) {
     targetTemperatureC = clampValue(targetTemperatureC + FireplaceConfig::kTemperatureStep,
@@ -210,9 +164,6 @@ void handleButtons() {
     targetBrightness = static_cast<uint8_t>(
         clampValue(next, static_cast<int>(FireplaceConfig::kMinBrightness),
                    static_cast<int>(FireplaceConfig::kMaxBrightness)));
-  }
-  if (modeEvent == ButtonEvent::kPressed) {
-    cycleMode();
   }
 }
 
@@ -238,7 +189,6 @@ void setup() {
   pinMode(FireplaceConfig::kButtonTempDown, INPUT_PULLUP);
   pinMode(FireplaceConfig::kButtonBrightUp, INPUT_PULLUP);
   pinMode(FireplaceConfig::kButtonBrightDown, INPUT_PULLUP);
-  pinMode(FireplaceConfig::kButtonMode, INPUT_PULLUP);
 
 #ifdef ARDUINO_ARCH_ESP32
   analogReadResolution(12);
@@ -250,8 +200,8 @@ void setup() {
 
   randomSeed(analogRead(FireplaceConfig::kThermistorPin));
 
-  FireAnimation::begin(strip, effectiveBrightness());
-  fireState.baseBrightness = effectiveBrightness();
+  FireAnimation::begin(strip, targetBrightness);
+  fireState.baseBrightness = targetBrightness;
   fireState.lastFrameMs = millis();
 }
 
@@ -260,6 +210,6 @@ void loop() {
   const float currentTemperatureC = readThermistorCelsius();
   updateHeater(currentTemperatureC);
   updateDisplay(currentTemperatureC);
-  FireAnimation::update(strip, fireState, effectiveBrightness());
+  FireAnimation::update(strip, fireState, targetBrightness);
 }
 

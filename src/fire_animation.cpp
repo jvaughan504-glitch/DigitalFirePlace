@@ -5,9 +5,6 @@
 namespace FireAnimation {
 namespace {
 uint8_t clampBrightness(int value) {
-  if (value <= 0) {
-    return 0;
-  }
   if (value < FireplaceConfig::kMinBrightness) {
     return FireplaceConfig::kMinBrightness;
   }
