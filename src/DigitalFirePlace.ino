@@ -40,6 +40,7 @@ ButtonState buttonBrightUp{FireplaceConfig::kButtonBrightUp, false, 0, 0, false}
 ButtonState buttonBrightDown{FireplaceConfig::kButtonBrightDown, false, 0, 0, false};
 ButtonState buttonMode{FireplaceConfig::kButtonMode, false, 0, 0, false};
 
+
 Adafruit_SSD1306 display(128, 64, &Wire, FireplaceConfig::kOledResetPin);
 Adafruit_NeoPixel strip(FireplaceConfig::kNeoPixelCount, FireplaceConfig::kNeoPixelPin,
                         NEO_GRB + NEO_KHZ800);
@@ -85,6 +86,7 @@ void cycleMode() {
 uint8_t effectiveBrightness() {
   return operatingMode == OperatingMode::kHeatOnly ? 0 : targetBrightness;
 }
+bool heaterActive = false;
 
 ButtonEvent updateButton(ButtonState &button) {
   const uint32_t now = millis();
@@ -166,6 +168,9 @@ void updateDisplay(float currentTemperatureC) {
   display.setCursor(0, 58);
   display.print("Bright:");
   display.print(effectiveBrightness());
+  display.setCursor(0, 58);
+  display.print("Bright:");
+  display.print(targetBrightness);
 
   display.setCursor(80, 58);
   display.print(heaterActive ? "HEAT ON" : "HEAT OFF");
@@ -300,6 +305,14 @@ void updateHeater(float currentTemperatureC) {
     } else if (heaterActive && currentTemperatureC >= upperThreshold) {
       heaterActive = false;
     }
+void updateHeater(float currentTemperatureC) {
+  const float lowerThreshold = targetTemperatureC - (FireplaceConfig::kHysteresis / 2.0f);
+  const float upperThreshold = targetTemperatureC + (FireplaceConfig::kHysteresis / 2.0f);
+
+  if (!heaterActive && currentTemperatureC <= lowerThreshold) {
+    heaterActive = true;
+  } else if (heaterActive && currentTemperatureC >= upperThreshold) {
+    heaterActive = false;
   }
   digitalWrite(FireplaceConfig::kRelayPin, heaterActive ? HIGH : LOW);
 }
@@ -377,6 +390,9 @@ void setup() {
   fireState.lastFrameMs = millis();
 
   startWifiAndServer();
+  FireAnimation::begin(strip, targetBrightness);
+  fireState.baseBrightness = targetBrightness;
+  fireState.lastFrameMs = millis();
 }
 
 void loop() {
@@ -387,5 +403,8 @@ void loop() {
   updateDisplay(currentTemperatureC);
   FireAnimation::update(strip, fireState, effectiveBrightness());
   handleHttp();
+  updateHeater(currentTemperatureC);
+  updateDisplay(currentTemperatureC);
+  FireAnimation::update(strip, fireState, targetBrightness);
 }
 
