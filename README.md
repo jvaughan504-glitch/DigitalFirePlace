@@ -4,10 +4,7 @@ Wifi control upgrade for electic fireplace
 
 ## Firmware sketch
 
-Source files for the controller firmware live in `src/`. The main sketch `DigitalFirePlace.ino`
-initialises the relay, thermistor, four buttons, 14 NeoPixels, and the Adafruit Micro OLED
-display. Supporting modules provide configuration constants (`config.h`) and a flame animation
-(`fire_animation.cpp`).
+
 
 ## Required Arduino libraries
 

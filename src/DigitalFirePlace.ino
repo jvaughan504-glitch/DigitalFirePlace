@@ -34,6 +34,7 @@ ButtonState buttonTempDown{FireplaceConfig::kButtonTempDown, false, 0, 0, false}
 ButtonState buttonBrightUp{FireplaceConfig::kButtonBrightUp, false, 0, 0, false};
 ButtonState buttonBrightDown{FireplaceConfig::kButtonBrightDown, false, 0, 0, false};
 
+
 Adafruit_SSD1306 display(128, 64, &Wire, FireplaceConfig::kOledResetPin);
 Adafruit_NeoPixel strip(FireplaceConfig::kNeoPixelCount, FireplaceConfig::kNeoPixelPin,
                         NEO_GRB + NEO_KHZ800);
