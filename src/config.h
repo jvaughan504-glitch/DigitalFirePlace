@@ -11,6 +11,7 @@ static constexpr uint8_t kButtonTempUp = 25;
 static constexpr uint8_t kButtonTempDown = 26;
 static constexpr uint8_t kButtonBrightUp = 27;
 static constexpr uint8_t kButtonBrightDown = 14;
+static constexpr uint8_t kButtonMode = 32;
 
 // NeoPixel configuration
 static constexpr uint16_t kNeoPixelCount = 14;
@@ -45,5 +46,10 @@ static constexpr uint8_t kOledAddress = 0x3C;
 
 // Fire animation timings
 static constexpr uint32_t kAnimationFrameMs = 35;
+
+// Wi-Fi configuration (used only on ESP32 builds)
+static constexpr char kWifiSsid[] = "YOUR_SSID";
+static constexpr char kWifiPassword[] = "YOUR_PASSWORD";
+static constexpr uint32_t kWifiConnectTimeoutMs = 10000;
 }
 
