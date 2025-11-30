@@ -1,0 +1,391 @@
+#include <Adafruit_GFX.h>
+#include <Adafruit_NeoPixel.h>
+#include <Adafruit_SSD1306.h>
+#include <Wire.h>
+#include <math.h>
+
+#include "config.h"
+#include "fire_animation.h"
+
+#ifdef ARDUINO_ARCH_ESP32
+#include <WebServer.h>
+#include <WiFi.h>
+#endif
+
+namespace {
+struct ButtonState {
+  uint8_t pin;
+  bool stablePressed;
+  uint32_t lastChangeMs;
+  uint32_t lastRepeatMs;
+  bool repeating;
+};
+
+enum class ButtonEvent { kNone, kPressed, kRepeat };
+
+template <typename T>
+T clampValue(T value, T minValue, T maxValue) {
+  if (value < minValue) {
+    return minValue;
+  }
+  if (value > maxValue) {
+    return maxValue;
+  }
+  return value;
+}
+
+ButtonState buttonTempUp{FireplaceConfig::kButtonTempUp, false, 0, 0, false};
+ButtonState buttonTempDown{FireplaceConfig::kButtonTempDown, false, 0, 0, false};
+ButtonState buttonBrightUp{FireplaceConfig::kButtonBrightUp, false, 0, 0, false};
+ButtonState buttonBrightDown{FireplaceConfig::kButtonBrightDown, false, 0, 0, false};
+ButtonState buttonMode{FireplaceConfig::kButtonMode, false, 0, 0, false};
+
+Adafruit_SSD1306 display(128, 64, &Wire, FireplaceConfig::kOledResetPin);
+Adafruit_NeoPixel strip(FireplaceConfig::kNeoPixelCount, FireplaceConfig::kNeoPixelPin,
+                        NEO_GRB + NEO_KHZ800);
+float targetTemperatureC = 21.0f;
+uint8_t targetBrightness = 160;
+FireAnimation::State fireState{targetBrightness, 0};
+enum class OperatingMode { kFireOnly, kFireAndHeat, kHeatOnly };
+
+bool heaterActive = false;
+OperatingMode operatingMode = OperatingMode::kFireAndHeat;
+float lastTemperatureC = NAN;
+
+#ifdef ARDUINO_ARCH_ESP32
+WebServer server(80);
+#endif
+
+const char *modeLabel() {
+  switch (operatingMode) {
+    case OperatingMode::kFireOnly:
+      return "Fire";
+    case OperatingMode::kFireAndHeat:
+      return "Fire+Heat";
+    case OperatingMode::kHeatOnly:
+      return "Heat";
+  }
+  return "Fire+Heat";
+}
+
+void cycleMode() {
+  switch (operatingMode) {
+    case OperatingMode::kFireOnly:
+      operatingMode = OperatingMode::kFireAndHeat;
+      break;
+    case OperatingMode::kFireAndHeat:
+      operatingMode = OperatingMode::kHeatOnly;
+      break;
+    case OperatingMode::kHeatOnly:
+      operatingMode = OperatingMode::kFireOnly;
+      break;
+  }
+}
+
+uint8_t effectiveBrightness() {
+  return operatingMode == OperatingMode::kHeatOnly ? 0 : targetBrightness;
+}
+
+ButtonEvent updateButton(ButtonState &button) {
+  const uint32_t now = millis();
+  const bool reading = digitalRead(button.pin) == LOW;  // Active-low buttons
+
+  if (reading != button.stablePressed) {
+    if (now - button.lastChangeMs >= FireplaceConfig::kDebounceDelayMs) {
+      button.stablePressed = reading;
+      button.lastChangeMs = now;
+      button.repeating = false;
+      button.lastRepeatMs = now;
+      if (button.stablePressed) {
+        return ButtonEvent::kPressed;
+      }
+    }
+  }
+
+  if (button.stablePressed) {
+    const uint32_t threshold =
+        button.repeating ? FireplaceConfig::kHoldRepeatRateMs
+                          : FireplaceConfig::kHoldRepeatDelayMs;
+    if (now - button.lastRepeatMs >= threshold) {
+      button.lastRepeatMs = now;
+      button.repeating = true;
+      return ButtonEvent::kRepeat;
+    }
+  }
+
+  return ButtonEvent::kNone;
+}
+
+float readThermistorCelsius() {
+  const int raw = analogRead(FireplaceConfig::kThermistorPin);
+  if (raw <= 0) {
+    return -40.0f;
+  }
+
+  float resistance = FireplaceConfig::kSeriesResistor *
+                     ((FireplaceConfig::kAdcMax / static_cast<float>(raw)) - 1.0f);
+  if (resistance <= 0.0f) {
+    resistance = FireplaceConfig::kSeriesResistor;
+  }
+
+  float steinhart;
+  steinhart = resistance / FireplaceConfig::kNominalResistance;
+  steinhart = log(steinhart);
+  steinhart /= FireplaceConfig::kBCoefficient;
+  steinhart += 1.0f / (FireplaceConfig::kNominalTemperatureC + 273.15f);
+  steinhart = 1.0f / steinhart;
+  steinhart -= 273.15f;
+  return steinhart;
+}
+
+void updateDisplay(float currentTemperatureC) {
+  display.clearDisplay();
+  display.setTextColor(SSD1306_WHITE);
+
+  display.setTextSize(2);
+  display.setCursor(0, 0);
+  display.print("Room:");
+  display.setCursor(0, 18);
+  display.print(currentTemperatureC, 1);
+  display.cp437(true);
+  display.write(247);  // Degree symbol
+  display.print("C");
+
+  display.setCursor(0, 40);
+  display.print("Set:");
+  display.print(targetTemperatureC, 1);
+  display.write(247);
+  display.print("C");
+
+  display.setTextSize(1);
+  display.setCursor(80, 0);
+  display.print("Mode:");
+  display.setCursor(80, 10);
+  display.print(modeLabel());
+
+  display.setCursor(0, 58);
+  display.print("Bright:");
+  display.print(effectiveBrightness());
+
+  display.setCursor(80, 58);
+  display.print(heaterActive ? "HEAT ON" : "HEAT OFF");
+
+  display.display();
+}
+
+#ifdef ARDUINO_ARCH_ESP32
+String htmlHeader() {
+  return R"(<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Fireplace</title><style>body{font-family:Arial,Helvetica,sans-serif;background:#111;color:#eee;margin:0;padding:1rem;}header{font-size:1.4rem;font-weight:700;margin-bottom:.5rem;}section{margin-bottom:1rem;}label{display:block;margin:.4rem 0 .2rem;}input,select,button{padding:.4rem;border-radius:4px;border:1px solid #555;background:#222;color:#eee;}button{cursor:pointer;}small{color:#aaa;display:block;margin-top:.4rem;}</style></head><body><header>Digital Fireplace</header><section>)";
+}
+
+String htmlFooter() { return "</section></body></html>"; }
+
+String modeOption(const char *label, OperatingMode mode) {
+  const bool selected = operatingMode == mode;
+  String option = "<option value='";
+  option += static_cast<int>(mode);
+  option += "'";
+  if (selected) {
+    option += " selected";
+  }
+  option += ">";
+  option += label;
+  option += "</option>";
+  return option;
+}
+
+String renderPage() {
+  String page = htmlHeader();
+  page += "<div>Room: ";
+  if (isnan(lastTemperatureC)) {
+    page += "--";
+  } else {
+    page += String(lastTemperatureC, 1);
+    page += " &deg;C";
+  }
+  page += "<br/>Set: ";
+  page += String(targetTemperatureC, 1);
+  page += " &deg;C<br/>Mode: ";
+  page += modeLabel();
+  page += "<br/>Brightness: ";
+  page += effectiveBrightness();
+  page += heaterActive ? "<br/><strong>HEAT ON</strong>" : "<br/>HEAT OFF";
+  page += "</div>";
+
+  page += R"(<form action='/apply' method='get'><section><label for='temp'>Target Temp (&deg;C)</label><input type='number' step='0.5' min='15' max='30' id='temp' name='temp'>";
+  page += "<small>Current target: ";
+  page += String(targetTemperatureC, 1);
+  page += "</small></section><section><label for='bright'>Brightness (0-255)</label><input type='number' min='0' max='255' id='bright' name='bright'><small>Current: ";
+  page += effectiveBrightness();
+  page += "</small></section><section><label for='mode'>Mode</label><select id='mode' name='mode'>";
+  page += modeOption("Fire only", OperatingMode::kFireOnly);
+  page += modeOption("Fire + Heat", OperatingMode::kFireAndHeat);
+  page += modeOption("Heat only", OperatingMode::kHeatOnly);
+  page += R"(</select></section><button type='submit'>Apply</button></form>)";
+  page += htmlFooter();
+  return page;
+}
+
+void handleRoot() { server.send(200, "text/html", renderPage()); }
+
+void handleApply() {
+  if (server.hasArg("temp")) {
+    const float requested = server.arg("temp").toFloat();
+    targetTemperatureC = clampValue(requested, FireplaceConfig::kMinTargetTemperature,
+                                    FireplaceConfig::kMaxTargetTemperature);
+  }
+
+  if (server.hasArg("bright")) {
+    const int requested = server.arg("bright").toInt();
+    targetBrightness = static_cast<uint8_t>(
+        clampValue(requested, 0, static_cast<int>(FireplaceConfig::kMaxBrightness)));
+  }
+
+  if (server.hasArg("mode")) {
+    const int requestedMode = server.arg("mode").toInt();
+    switch (requestedMode) {
+      case 0:
+        operatingMode = OperatingMode::kFireOnly;
+        break;
+      case 1:
+        operatingMode = OperatingMode::kFireAndHeat;
+        break;
+      case 2:
+        operatingMode = OperatingMode::kHeatOnly;
+        break;
+      default:
+        break;
+    }
+  }
+
+  server.sendHeader("Location", "/");
+  server.send(302, "text/plain", "Redirecting...");
+}
+
+void handleNotFound() { server.send(404, "text/plain", "Not found"); }
+
+void startWifiAndServer() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(FireplaceConfig::kWifiSsid, FireplaceConfig::kWifiPassword);
+  const uint32_t start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - start <
+                                              FireplaceConfig::kWifiConnectTimeoutMs) {
+    delay(100);
+  }
+
+  server.on("/", handleRoot);
+  server.on("/apply", handleApply);
+  server.onNotFound(handleNotFound);
+  server.begin();
+}
+
+void handleHttp() { server.handleClient(); }
+#else
+void startWifiAndServer() {}
+void handleHttp() {}
+#endif
+
+void updateHeater(float currentTemperatureC) {
+  const bool heatEnabled = operatingMode != OperatingMode::kFireOnly;
+  if (!heatEnabled) {
+    heaterActive = false;
+  } else {
+    const float lowerThreshold =
+        targetTemperatureC - (FireplaceConfig::kHysteresis / 2.0f);
+    const float upperThreshold =
+        targetTemperatureC + (FireplaceConfig::kHysteresis / 2.0f);
+
+    if (!heaterActive && currentTemperatureC <= lowerThreshold) {
+      heaterActive = true;
+    } else if (heaterActive && currentTemperatureC >= upperThreshold) {
+      heaterActive = false;
+    }
+  }
+  digitalWrite(FireplaceConfig::kRelayPin, heaterActive ? HIGH : LOW);
+}
+
+void handleButtons() {
+  const ButtonEvent tempUpEvent = updateButton(buttonTempUp);
+  const ButtonEvent tempDownEvent = updateButton(buttonTempDown);
+  const ButtonEvent brightUpEvent = updateButton(buttonBrightUp);
+  const ButtonEvent brightDownEvent = updateButton(buttonBrightDown);
+  const ButtonEvent modeEvent = updateButton(buttonMode);
+
+  if (tempUpEvent != ButtonEvent::kNone) {
+    targetTemperatureC = clampValue(targetTemperatureC + FireplaceConfig::kTemperatureStep,
+                                    FireplaceConfig::kMinTargetTemperature,
+                                    FireplaceConfig::kMaxTargetTemperature);
+  }
+  if (tempDownEvent != ButtonEvent::kNone) {
+    targetTemperatureC = clampValue(targetTemperatureC - FireplaceConfig::kTemperatureStep,
+                                    FireplaceConfig::kMinTargetTemperature,
+                                    FireplaceConfig::kMaxTargetTemperature);
+  }
+  if (brightUpEvent != ButtonEvent::kNone) {
+    const int next = targetBrightness + FireplaceConfig::kBrightnessStep;
+    targetBrightness = static_cast<uint8_t>(
+        clampValue(next, static_cast<int>(FireplaceConfig::kMinBrightness),
+                   static_cast<int>(FireplaceConfig::kMaxBrightness)));
+  }
+  if (brightDownEvent != ButtonEvent::kNone) {
+    const int next = static_cast<int>(targetBrightness) - FireplaceConfig::kBrightnessStep;
+    targetBrightness = static_cast<uint8_t>(
+        clampValue(next, static_cast<int>(FireplaceConfig::kMinBrightness),
+                   static_cast<int>(FireplaceConfig::kMaxBrightness)));
+  }
+  if (modeEvent == ButtonEvent::kPressed) {
+    cycleMode();
+  }
+}
+
+void drawSplash() {
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 16);
+  display.print("Fireplace");
+  display.setTextSize(1);
+  display.setCursor(0, 44);
+  display.print("Starting...");
+  display.display();
+}
+
+}  // namespace
+
+void setup() {
+  pinMode(FireplaceConfig::kRelayPin, OUTPUT);
+  digitalWrite(FireplaceConfig::kRelayPin, LOW);
+
+  pinMode(FireplaceConfig::kButtonTempUp, INPUT_PULLUP);
+  pinMode(FireplaceConfig::kButtonTempDown, INPUT_PULLUP);
+  pinMode(FireplaceConfig::kButtonBrightUp, INPUT_PULLUP);
+  pinMode(FireplaceConfig::kButtonBrightDown, INPUT_PULLUP);
+  pinMode(FireplaceConfig::kButtonMode, INPUT_PULLUP);
+
+#ifdef ARDUINO_ARCH_ESP32
+  analogReadResolution(12);
+#endif
+
+  Wire.begin();
+  display.begin(SSD1306_SWITCHCAPVCC, FireplaceConfig::kOledAddress);
+  drawSplash();
+
+  randomSeed(analogRead(FireplaceConfig::kThermistorPin));
+
+  FireAnimation::begin(strip, effectiveBrightness());
+  fireState.baseBrightness = effectiveBrightness();
+  fireState.lastFrameMs = millis();
+
+  startWifiAndServer();
+}
+
+void loop() {
+  handleButtons();
+  const float currentTemperatureC = readThermistorCelsius();
+  lastTemperatureC = currentTemperatureC;
+  updateHeater(currentTemperatureC);
+  updateDisplay(currentTemperatureC);
+  FireAnimation::update(strip, fireState, effectiveBrightness());
+  handleHttp();
+}
+
