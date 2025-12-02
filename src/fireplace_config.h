@@ -14,7 +14,7 @@ static constexpr uint8_t kButtonBrightDown = 14;
 static constexpr uint8_t kButtonMode = 32;
 
 // NeoPixel configuration
-static constexpr uint16_t kNeoPixelCount = 14;
+static constexpr uint16_t kNeoPixelCount = 10;
 
 // Thermistor calibration (Steinhart-Hart parameters)
 static constexpr float kSeriesResistor = 10000.0f;
@@ -48,8 +48,8 @@ static constexpr uint8_t kOledAddress = 0x3C;
 static constexpr uint32_t kAnimationFrameMs = 35;
 
 // Wi-Fi configuration (used only on ESP32 builds)
-static constexpr char kWifiSsid[] = "YOUR_SSID";
-static constexpr char kWifiPassword[] = "YOUR_PASSWORD";
+static constexpr char kWifiSsid[] = "BELL728";
+static constexpr char kWifiPassword[] = "9134EC94D365";
 static constexpr uint32_t kWifiConnectTimeoutMs = 10000;
 }
 
