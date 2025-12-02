@@ -40,8 +40,8 @@ static constexpr uint32_t kDebounceDelayMs = 50;
 static constexpr uint32_t kHoldRepeatDelayMs = 400;
 static constexpr uint32_t kHoldRepeatRateMs = 150;
 
-// Display configuration
-static constexpr uint8_t kOledResetPin = 16;
+// Display configuration (use -1 when the OLED reset line is not exposed)
+static constexpr int8_t kOledResetPin = -1;
 static constexpr uint8_t kOledAddress = 0x3C;
 
 // Fire animation timings
