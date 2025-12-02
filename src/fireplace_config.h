@@ -43,6 +43,9 @@ static constexpr uint32_t kHoldRepeatRateMs = 150;
 // Display configuration (use -1 when the OLED reset line is not exposed)
 static constexpr int8_t kOledResetPin = -1;
 static constexpr uint8_t kOledAddress = 0x3C;
+// Set to -1/-1 to use Wire defaults; override when your OLED is wired to non-default pins.
+static constexpr int8_t kOledSdaPin = 21;
+static constexpr int8_t kOledSclPin = 22;
 
 // Fire animation timings
 static constexpr uint32_t kAnimationFrameMs = 35;

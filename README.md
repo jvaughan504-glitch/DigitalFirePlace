@@ -26,9 +26,10 @@ Install the following Arduino libraries via the Library Manager:
 1. Open the Arduino IDE and select **File → Open...**, then choose `src/DigitalFirePlace.ino`.
 2. Select the target board (ESP32 Dev Module recommended) and the appropriate serial port.
 3. Ensure the I2C address in `fireplace_config.h` matches your OLED (default `0x3C`). Set
-   `kOledResetPin` to **-1** when your module does not expose a reset line (the default here),
-   and adjust pin assignments, thermistor calibration constants, and Wi-Fi credentials if
-   your wiring or network differs.
+   `kOledResetPin` to **-1** when your module does not expose a reset line (the default here).
+   If your OLED is wired to non-default I²C pins, update `kOledSdaPin` and `kOledSclPin`
+   accordingly. Adjust pin assignments, thermistor calibration constants, and Wi-Fi credentials
+   if your wiring or network differs.
 4. Click **Sketch → Verify/Compile** to build the firmware.
 5. Click **Sketch → Upload** to flash the firmware to your board.
 

@@ -42,6 +42,7 @@ static ButtonState buttonMode{FireplaceConfig::kButtonMode, false, 0, 0, false};
 static Adafruit_SSD1306 display(128, 64, &Wire, FireplaceConfig::kOledResetPin);
 static Adafruit_NeoPixel strip(FireplaceConfig::kNeoPixelCount, FireplaceConfig::kNeoPixelPin,
                                NEO_GRB + NEO_KHZ800);
+static bool displayReady = false;
 static float targetTemperatureC = 21.0f;
 static uint8_t targetBrightness = 160;
 static FireAnimation::State fireState{targetBrightness, 0};
@@ -138,6 +139,9 @@ static float readThermistorCelsius() {
 }
 
 static void updateDisplay(float currentTemperatureC) {
+  if (!displayReady) {
+    return;
+  }
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
 
@@ -330,6 +334,9 @@ static void handleButtons() {
 }
 
 static void drawSplash() {
+  if (!displayReady) {
+    return;
+  }
   display.clearDisplay();
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
@@ -341,7 +348,24 @@ static void drawSplash() {
   display.display();
 }
 
+static bool beginDisplay() {
+  if (FireplaceConfig::kOledSdaPin >= 0 && FireplaceConfig::kOledSclPin >= 0) {
+    Wire.begin(FireplaceConfig::kOledSdaPin, FireplaceConfig::kOledSclPin);
+  } else {
+    Wire.begin();
+  }
+  Wire.setClock(400000);
+
+  if (display.begin(SSD1306_SWITCHCAPVCC, FireplaceConfig::kOledAddress)) {
+    return true;
+  }
+
+  const uint8_t alternateAddress = FireplaceConfig::kOledAddress == 0x3C ? 0x3D : 0x3C;
+  return display.begin(SSD1306_SWITCHCAPVCC, alternateAddress);
+}
+
 void setup() {
+  Serial.begin(115200);
   pinMode(FireplaceConfig::kRelayPin, OUTPUT);
   digitalWrite(FireplaceConfig::kRelayPin, LOW);
 
@@ -355,9 +379,12 @@ void setup() {
   analogReadResolution(12);
 #endif
 
-  Wire.begin();
-  display.begin(SSD1306_SWITCHCAPVCC, FireplaceConfig::kOledAddress);
-  drawSplash();
+  displayReady = beginDisplay();
+  if (!displayReady) {
+    Serial.println("OLED init failed. Check SDA/SCL wiring and I2C address.");
+  } else {
+    drawSplash();
+  }
 
   randomSeed(analogRead(FireplaceConfig::kThermistorPin));
 
