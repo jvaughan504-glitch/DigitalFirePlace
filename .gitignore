@@ -1,0 +1,18 @@
+# Arduino/ESP32 build artifacts
+*.bin
+*.elf
+*.hex
+*.map
+*.eep
+build/
+cmake-build*/
+.dist/
+.cache/
+.pio/
+
+# Editor files
+*.swp
+*~
+.DS_Store
+.vscode/
+.idea/
