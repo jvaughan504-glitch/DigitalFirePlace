@@ -4,7 +4,7 @@
 #include <Wire.h>
 #include <math.h>
 
-#include "config.h"
+#include "fireplace_config.h"
 #include "fire_animation.h"
 
 #ifdef ARDUINO_ARCH_ESP32
