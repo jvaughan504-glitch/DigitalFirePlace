@@ -1,6 +1,6 @@
 #include "fire_animation.h"
 
-#include "config.h"
+#include "fireplace_config.h"
 
 namespace FireAnimation {
 namespace {

@@ -4,7 +4,7 @@
 #include <Wire.h>
 #include <math.h>
 
-#include "config.h"
+#include "fireplace_config.h"
 #include "fire_animation.h"
 
 #ifdef ARDUINO_ARCH_ESP32
@@ -12,7 +12,6 @@
 #include <WiFi.h>
 #endif
 
-namespace {
 struct ButtonState {
   uint8_t pin;
   bool stablePressed;
@@ -34,30 +33,30 @@ T clampValue(T value, T minValue, T maxValue) {
   return value;
 }
 
-ButtonState buttonTempUp{FireplaceConfig::kButtonTempUp, false, 0, 0, false};
-ButtonState buttonTempDown{FireplaceConfig::kButtonTempDown, false, 0, 0, false};
-ButtonState buttonBrightUp{FireplaceConfig::kButtonBrightUp, false, 0, 0, false};
-ButtonState buttonBrightDown{FireplaceConfig::kButtonBrightDown, false, 0, 0, false};
-ButtonState buttonMode{FireplaceConfig::kButtonMode, false, 0, 0, false};
+static ButtonState buttonTempUp{FireplaceConfig::kButtonTempUp, false, 0, 0, false};
+static ButtonState buttonTempDown{FireplaceConfig::kButtonTempDown, false, 0, 0, false};
+static ButtonState buttonBrightUp{FireplaceConfig::kButtonBrightUp, false, 0, 0, false};
+static ButtonState buttonBrightDown{FireplaceConfig::kButtonBrightDown, false, 0, 0, false};
+static ButtonState buttonMode{FireplaceConfig::kButtonMode, false, 0, 0, false};
 
-
-Adafruit_SSD1306 display(128, 64, &Wire, FireplaceConfig::kOledResetPin);
-Adafruit_NeoPixel strip(FireplaceConfig::kNeoPixelCount, FireplaceConfig::kNeoPixelPin,
-                        NEO_GRB + NEO_KHZ800);
-float targetTemperatureC = 21.0f;
-uint8_t targetBrightness = 160;
-FireAnimation::State fireState{targetBrightness, 0};
+static Adafruit_SSD1306 display(128, 64, &Wire, FireplaceConfig::kOledResetPin);
+static Adafruit_NeoPixel strip(FireplaceConfig::kNeoPixelCount, FireplaceConfig::kNeoPixelPin,
+                               NEO_GRB + NEO_KHZ800);
+static bool displayReady = false;
+static float targetTemperatureC = 21.0f;
+static uint8_t targetBrightness = 160;
+static FireAnimation::State fireState{targetBrightness, 0};
 enum class OperatingMode { kFireOnly, kFireAndHeat, kHeatOnly };
 
-bool heaterActive = false;
-OperatingMode operatingMode = OperatingMode::kFireAndHeat;
-float lastTemperatureC = NAN;
+static bool heaterActive = false;
+static OperatingMode operatingMode = OperatingMode::kFireAndHeat;
+static float lastTemperatureC = NAN;
 
 #ifdef ARDUINO_ARCH_ESP32
-WebServer server(80);
+static WebServer server(80);
 #endif
 
-const char *modeLabel() {
+static const char *modeLabel() {
   switch (operatingMode) {
     case OperatingMode::kFireOnly:
       return "Fire";
@@ -69,7 +68,7 @@ const char *modeLabel() {
   return "Fire+Heat";
 }
 
-void cycleMode() {
+static void cycleMode() {
   switch (operatingMode) {
     case OperatingMode::kFireOnly:
       operatingMode = OperatingMode::kFireAndHeat;
@@ -83,11 +82,11 @@ void cycleMode() {
   }
 }
 
-uint8_t effectiveBrightness() {
+static uint8_t effectiveBrightness() {
   return operatingMode == OperatingMode::kHeatOnly ? 0 : targetBrightness;
 }
 
-ButtonEvent updateButton(ButtonState &button) {
+static ButtonEvent updateButton(ButtonState &button) {
   const uint32_t now = millis();
   const bool reading = digitalRead(button.pin) == LOW;  // Active-low buttons
 
@@ -117,7 +116,7 @@ ButtonEvent updateButton(ButtonState &button) {
   return ButtonEvent::kNone;
 }
 
-float readThermistorCelsius() {
+static float readThermistorCelsius() {
   const int raw = analogRead(FireplaceConfig::kThermistorPin);
   if (raw <= 0) {
     return -40.0f;
@@ -139,7 +138,10 @@ float readThermistorCelsius() {
   return steinhart;
 }
 
-void updateDisplay(float currentTemperatureC) {
+static void updateDisplay(float currentTemperatureC) {
+  if (!displayReady) {
+    return;
+  }
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
 
@@ -175,27 +177,13 @@ void updateDisplay(float currentTemperatureC) {
 }
 
 #ifdef ARDUINO_ARCH_ESP32
-String htmlHeader() {
-  return R"(<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Fireplace</title><style>body{font-family:Arial,Helvetica,sans-serif;background:#111;color:#eee;margin:0;padding:1rem;}header{font-size:1.4rem;font-weight:700;margin-bottom:.5rem;}section{margin-bottom:1rem;}label{display:block;margin:.4rem 0 .2rem;}input,select,button{padding:.4rem;border-radius:4px;border:1px solid #555;background:#222;color:#eee;}button{cursor:pointer;}small{color:#aaa;display:block;margin-top:.4rem;}</style></head><body><header>Digital Fireplace</header><section>)";
+static String htmlHeader() {
+  return R"(<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Fireplace</title><style>body{font-family:Arial,Helvetica,sans-serif;background:#111;color:#eee;margin:0;padding:1rem;}header{font-size:1.4rem;font-weight:700;margin-bottom:.5rem;}section{margin-bottom:1rem;}label{display:block;margin:.4rem 0 .2rem;}input,button{padding:.4rem;border-radius:4px;border:1px solid #555;background:#222;color:#eee;}button{cursor:pointer;}small{color:#aaa;display:block;margin-top:.4rem;}.mode-buttons{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.2rem;}.mode-buttons .active{background:#0a84ff;border-color:#0a84ff;color:#fff;}</style></head><body><header>Digital Fireplace</header><section>)";
 }
 
-String htmlFooter() { return "</section></body></html>"; }
+static String htmlFooter() { return "</section></body></html>"; }
 
-String modeOption(const char *label, OperatingMode mode) {
-  const bool selected = operatingMode == mode;
-  String option = "<option value='";
-  option += static_cast<int>(mode);
-  option += "'";
-  if (selected) {
-    option += " selected";
-  }
-  option += ">";
-  option += label;
-  option += "</option>";
-  return option;
-}
-
-String renderPage() {
+static String renderPage() {
   String page = htmlHeader();
   page += "<div>Room: ";
   if (isnan(lastTemperatureC)) {
@@ -218,18 +206,24 @@ String renderPage() {
   page += String(targetTemperatureC, 1);
   page += "</small></section><section><label for='bright'>Brightness (0-255)</label><input type='number' min='0' max='255' id='bright' name='bright'><small>Current: ";
   page += effectiveBrightness();
-  page += "</small></section><section><label for='mode'>Mode</label><select id='mode' name='mode'>";
-  page += modeOption("Fire only", OperatingMode::kFireOnly);
-  page += modeOption("Fire + Heat", OperatingMode::kFireAndHeat);
-  page += modeOption("Heat only", OperatingMode::kHeatOnly);
-  page += R"(</select></section><button type='submit'>Apply</button></form>)";
+  page += "</small></section><section><label>Mode</label><div class='mode-buttons'>";
+  page += "<button type='submit' name='mode' value='0";
+  page += operatingMode == OperatingMode::kFireOnly ? "' class='active'" : "'";
+  page += ">Fire only</button>";
+  page += "<button type='submit' name='mode' value='1";
+  page += operatingMode == OperatingMode::kFireAndHeat ? "' class='active'" : "'";
+  page += ">Fire + Heat</button>";
+  page += "<button type='submit' name='mode' value='2";
+  page += operatingMode == OperatingMode::kHeatOnly ? "' class='active'" : "'";
+  page += ">Heat only</button>";
+  page += R"(</div></section><button type='submit'>Apply</button></form>)";
   page += htmlFooter();
   return page;
 }
 
-void handleRoot() { server.send(200, "text/html", renderPage()); }
+static void handleRoot() { server.send(200, "text/html", renderPage()); }
 
-void handleApply() {
+static void handleApply() {
   if (server.hasArg("temp")) {
     const float requested = server.arg("temp").toFloat();
     targetTemperatureC = clampValue(requested, FireplaceConfig::kMinTargetTemperature,
@@ -263,9 +257,9 @@ void handleApply() {
   server.send(302, "text/plain", "Redirecting...");
 }
 
-void handleNotFound() { server.send(404, "text/plain", "Not found"); }
+static void handleNotFound() { server.send(404, "text/plain", "Not found"); }
 
-void startWifiAndServer() {
+static void startWifiAndServer() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(FireplaceConfig::kWifiSsid, FireplaceConfig::kWifiPassword);
   const uint32_t start = millis();
@@ -280,13 +274,13 @@ void startWifiAndServer() {
   server.begin();
 }
 
-void handleHttp() { server.handleClient(); }
+static void handleHttp() { server.handleClient(); }
 #else
-void startWifiAndServer() {}
-void handleHttp() {}
+static void startWifiAndServer() {}
+static void handleHttp() {}
 #endif
 
-void updateHeater(float currentTemperatureC) {
+static void updateHeater(float currentTemperatureC) {
   const bool heatEnabled = operatingMode != OperatingMode::kFireOnly;
   if (!heatEnabled) {
     heaterActive = false;
@@ -305,7 +299,7 @@ void updateHeater(float currentTemperatureC) {
   digitalWrite(FireplaceConfig::kRelayPin, heaterActive ? HIGH : LOW);
 }
 
-void handleButtons() {
+static void handleButtons() {
   const ButtonEvent tempUpEvent = updateButton(buttonTempUp);
   const ButtonEvent tempDownEvent = updateButton(buttonTempDown);
   const ButtonEvent brightUpEvent = updateButton(buttonBrightUp);
@@ -339,7 +333,10 @@ void handleButtons() {
   }
 }
 
-void drawSplash() {
+static void drawSplash() {
+  if (!displayReady) {
+    return;
+  }
   display.clearDisplay();
   display.setTextSize(2);
   display.setTextColor(SSD1306_WHITE);
@@ -351,9 +348,24 @@ void drawSplash() {
   display.display();
 }
 
-}  // namespace
+static bool beginDisplay() {
+  if (FireplaceConfig::kOledSdaPin >= 0 && FireplaceConfig::kOledSclPin >= 0) {
+    Wire.begin(FireplaceConfig::kOledSdaPin, FireplaceConfig::kOledSclPin);
+  } else {
+    Wire.begin();
+  }
+  Wire.setClock(400000);
+
+  if (display.begin(SSD1306_SWITCHCAPVCC, FireplaceConfig::kOledAddress)) {
+    return true;
+  }
+
+  const uint8_t alternateAddress = FireplaceConfig::kOledAddress == 0x3C ? 0x3D : 0x3C;
+  return display.begin(SSD1306_SWITCHCAPVCC, alternateAddress);
+}
 
 void setup() {
+  Serial.begin(115200);
   pinMode(FireplaceConfig::kRelayPin, OUTPUT);
   digitalWrite(FireplaceConfig::kRelayPin, LOW);
 
@@ -367,16 +379,20 @@ void setup() {
   analogReadResolution(12);
 #endif
 
-  Wire.begin();
-  display.begin(SSD1306_SWITCHCAPVCC, FireplaceConfig::kOledAddress);
-  drawSplash();
+  displayReady = beginDisplay();
+  if (!displayReady) {
+    Serial.println("OLED init failed. Check SDA/SCL wiring and I2C address.");
+  } else {
+    drawSplash();
+  }
 
   randomSeed(analogRead(FireplaceConfig::kThermistorPin));
 
-  startWifiAndServer();
   FireAnimation::begin(strip, effectiveBrightness());
   fireState.baseBrightness = effectiveBrightness();
   fireState.lastFrameMs = millis();
+
+  startWifiAndServer();
 }
 
 void loop() {
