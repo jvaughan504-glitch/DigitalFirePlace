@@ -145,32 +145,32 @@ static void updateDisplay(float currentTemperatureC) {
   display.clearDisplay();
   display.setTextColor(SSD1306_WHITE);
 
-  display.setTextSize(2);
+  display.setTextSize(1);
   display.setCursor(0, 0);
-  display.print("Room:");
-  display.setCursor(0, 18);
+  display.println("Room:");
+  display.setCursor(0, 10);
   display.print(currentTemperatureC, 1);
   display.cp437(true);
-  display.write(247);  // Degree symbol
-  display.print("C");
+  //display.write(247);  // Degree symbol
+  display.println("C");
 
-  display.setCursor(0, 40);
-  display.print("Set:");
+  display.setCursor(0, 25);
+  display.println("Set:");
   display.print(targetTemperatureC, 1);
-  display.write(247);
-  display.print("C");
+  //display.write(247);
+  display.println("C");
 
   display.setTextSize(1);
-  display.setCursor(80, 0);
+  display.setCursor(70, 0);
   display.print("Mode:");
-  display.setCursor(80, 10);
+  display.setCursor(70, 10);
   display.print(modeLabel());
 
-  display.setCursor(0, 58);
+  display.setCursor(0, 50);
   display.print("Bright:");
   display.print(effectiveBrightness());
 
-  display.setCursor(80, 58);
+  display.setCursor(80, 50);
   display.print(heaterActive ? "HEAT ON" : "HEAT OFF");
 
   display.display();
