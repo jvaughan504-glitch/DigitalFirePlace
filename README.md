@@ -1,6 +1,6 @@
 # DigitalFirePlace
 
-Wifi control upgrade for electic fireplace
+Wifi control upgrade for electic fireplaces
 
 ## Firmware sketch
 
