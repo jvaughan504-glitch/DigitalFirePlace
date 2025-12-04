@@ -10,6 +10,7 @@ struct State {
 };
 
 void begin(Adafruit_NeoPixel &strip, uint8_t initialBrightness);
-void update(Adafruit_NeoPixel &strip, State &state, uint8_t targetBrightness);
+void update(Adafruit_NeoPixel &strip, State &state, uint8_t targetBrightness,
+            uint8_t colorPercent);
 }
 
