@@ -176,6 +176,14 @@ static void updateDisplay(float currentTemperatureC) {
   display.display();
 }
 
+static float smoothTemperature(float measurementC) {
+  if (isnan(lastTemperatureC)) {
+    return measurementC;
+  }
+  const float alpha = FireplaceConfig::kTemperatureSmoothAlpha;
+  return (alpha * measurementC) + ((1.0f - alpha) * lastTemperatureC);
+}
+
 #ifdef ARDUINO_ARCH_ESP32
 static String htmlHeader() {
   return R"(<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Fireplace</title><style>
@@ -411,7 +419,8 @@ void setup() {
 
 void loop() {
   handleButtons();
-  const float currentTemperatureC = readThermistorCelsius();
+  const float measuredTemperatureC = readThermistorCelsius();
+  const float currentTemperatureC = smoothTemperature(measuredTemperatureC);
   lastTemperatureC = currentTemperatureC;
   updateHeater(currentTemperatureC);
   updateDisplay(currentTemperatureC);
