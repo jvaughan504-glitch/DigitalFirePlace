@@ -1,5 +1,7 @@
 #include "fire_animation.h"
 
+#include <math.h>
+
 #include "fireplace_config.h"
 
 namespace FireAnimation {
@@ -23,6 +25,46 @@ struct ColorWeights {
   float blue;
 };
 
+ColorWeights hsvToRgb(float hueDegrees) {
+  // Normalise hue to [0, 360).
+  while (hueDegrees < 0.0f) hueDegrees += 360.0f;
+  while (hueDegrees >= 360.0f) hueDegrees -= 360.0f;
+
+  const float s = 1.0f;  // Full saturation for vivid colours.
+  const float v = 1.0f;  // Full brightness; scaled later by pixel brightness.
+
+  const float c = v * s;
+  const float hPrime = hueDegrees / 60.0f;
+  const float x = c * (1.0f - fabs(fmod(hPrime, 2.0f) - 1.0f));
+  float r = 0.0f, g = 0.0f, b = 0.0f;
+
+  if (hPrime >= 0.0f && hPrime < 1.0f) {
+    r = c;
+    g = x;
+  } else if (hPrime < 2.0f) {
+    r = x;
+    g = c;
+  } else if (hPrime < 3.0f) {
+    g = c;
+    b = x;
+  } else if (hPrime < 4.0f) {
+    g = x;
+    b = c;
+  } else if (hPrime < 5.0f) {
+    r = x;
+    b = c;
+  } else {
+    r = c;
+    b = x;
+  }
+
+  const float m = v - c;
+  return {r + m, g + m, b + m};
+}
+
+ColorWeights colorFromPercent(uint8_t colorPercent) {
+  const float hue = (static_cast<float>(colorPercent) / 100.0f) * 360.0f;
+  return hsvToRgb(hue);
 ColorWeights colorFromPercent(uint8_t colorPercent) {
   const float t = static_cast<float>(colorPercent) / 100.0f;
   const ColorWeights warm{1.0f, 0.7f, 0.25f};

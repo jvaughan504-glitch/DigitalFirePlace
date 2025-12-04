@@ -100,6 +100,11 @@ static uint8_t brightnessFromPercent(int percent) {
   return static_cast<uint8_t>(round(brightness));
 }
 
+static uint16_t hueDegreesFromPercent(uint8_t colorPercent) {
+  const float hue = (static_cast<float>(colorPercent) / 100.0f) * 360.0f;
+  return static_cast<uint16_t>(round(hue));
+}
+
 static ButtonEvent updateButton(ButtonState &button) {
   const uint32_t now = millis();
   const bool reading = digitalRead(button.pin) == LOW;  // Active-low buttons
@@ -241,6 +246,8 @@ static String renderPage() {
   page += brightnessToPercent(effectiveBrightness());
   page += "%";
   page += "<br/>Colour: ";
+  page += String(hueDegreesFromPercent(targetColorPercent));
+  page += "&deg; hue";
   page += String(targetColorPercent);
   page += "% cool";
   page += heaterActive ? "<br/><strong>HEAT ON</strong>" : "<br/>HEAT OFF";
@@ -254,6 +261,11 @@ static String renderPage() {
   page += brightnessToPercent(targetBrightness);
   page += R"('><datalist id='bright-scale'><option value='0'><option value='25'><option value='50'><option value='75'><option value='100'></datalist><small>Current: <span id='bright-value'>)";
   page += brightnessToPercent(targetBrightness);
+  page += R"(</span>%</small></section><section><label for='color'>Flame colour (full spectrum)</label><input type='range' min='0' max='100' step='1' list='color-scale' id='color' name='color' value='";
+  page += String(targetColorPercent);
+  page += R"('><datalist id='color-scale'><option value='0'><option value='25'><option value='50'><option value='75'><option value='100'></datalist><small>Hue: <span id='color-value'>)";
+  page += String(hueDegreesFromPercent(targetColorPercent));
+  page += R"(</span>&deg;</small></section><section><label>Mode</label><div class='mode-buttons'>)";
   page += R"(</span>%</small></section><section><label for='color'>Flame colour (warm to cool)</label><input type='range' min='0' max='100' step='1' list='color-scale' id='color' name='color' value='";
   page += String(targetColorPercent);
   page += R"('><datalist id='color-scale'><option value='0'><option value='25'><option value='50'><option value='75'><option value='100'></datalist><small>Cool tint: <span id='color-value'>)";
@@ -270,6 +282,11 @@ static String renderPage() {
   page += R"(>Heat only</button></div></section><script>)";
   page +=
       "const tempInput=document.getElementById('temp');const tempValue=document.getElementById('temp-value');const brightInput=document.getElementById('bright');const brightValue=document.getElementById('bright-value');const colorInput=document.getElementById('color');const colorValue=document.getElementById('color-value');const modeButtons=document.querySelectorAll('.mode-buttons button');"
+      "const hueFromPercent=p=>Math.round((Number(p)/100)*360);"
+      "function sendUpdate(params){const url=new URL('/apply',window.location.href);Object.keys(params).forEach(k=>url.searchParams.set(k,params[k]));fetch(url.toString()).catch(console.error);}"
+      "tempInput.addEventListener('input',()=>{tempValue.textContent=tempInput.value;sendUpdate({temp:tempInput.value});});"
+      "brightInput.addEventListener('input',()=>{brightValue.textContent=brightInput.value;sendUpdate({bright:brightInput.value});});"
+      "colorInput.addEventListener('input',()=>{colorValue.textContent=hueFromPercent(colorInput.value);sendUpdate({color:colorInput.value});});"
       "function sendUpdate(params){const url=new URL('/apply',window.location.href);Object.keys(params).forEach(k=>url.searchParams.set(k,params[k]));fetch(url.toString()).catch(console.error);}"
       "tempInput.addEventListener('input',()=>{tempValue.textContent=tempInput.value;sendUpdate({temp:tempInput.value});});"
       "brightInput.addEventListener('input',()=>{brightValue.textContent=brightInput.value;sendUpdate({bright:brightInput.value});});"
