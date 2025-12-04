@@ -248,6 +248,8 @@ static String renderPage() {
   page += "<br/>Colour: ";
   page += String(hueDegreesFromPercent(targetColorPercent));
   page += "&deg; hue";
+  page += String(targetColorPercent);
+  page += "% cool";
   page += heaterActive ? "<br/><strong>HEAT ON</strong>" : "<br/>HEAT OFF";
   page += "</div>";
 
@@ -264,6 +266,11 @@ static String renderPage() {
   page += R"('><datalist id='color-scale'><option value='0'><option value='25'><option value='50'><option value='75'><option value='100'></datalist><small>Hue: <span id='color-value'>)";
   page += String(hueDegreesFromPercent(targetColorPercent));
   page += R"(</span>&deg;</small></section><section><label>Mode</label><div class='mode-buttons'>)";
+  page += R"(</span>%</small></section><section><label for='color'>Flame colour (warm to cool)</label><input type='range' min='0' max='100' step='1' list='color-scale' id='color' name='color' value='";
+  page += String(targetColorPercent);
+  page += R"('><datalist id='color-scale'><option value='0'><option value='25'><option value='50'><option value='75'><option value='100'></datalist><small>Cool tint: <span id='color-value'>)";
+  page += String(targetColorPercent);
+  page += R"(</span>%</small></section><section><label>Mode</label><div class='mode-buttons'>)";
   page += "<button type='button' data-mode='0";
   page += operatingMode == OperatingMode::kFireOnly ? "' class='active'" : "'";
   page += ">Fire only</button>";
@@ -280,6 +287,10 @@ static String renderPage() {
       "tempInput.addEventListener('input',()=>{tempValue.textContent=tempInput.value;sendUpdate({temp:tempInput.value});});"
       "brightInput.addEventListener('input',()=>{brightValue.textContent=brightInput.value;sendUpdate({bright:brightInput.value});});"
       "colorInput.addEventListener('input',()=>{colorValue.textContent=hueFromPercent(colorInput.value);sendUpdate({color:colorInput.value});});"
+      "function sendUpdate(params){const url=new URL('/apply',window.location.href);Object.keys(params).forEach(k=>url.searchParams.set(k,params[k]));fetch(url.toString()).catch(console.error);}"
+      "tempInput.addEventListener('input',()=>{tempValue.textContent=tempInput.value;sendUpdate({temp:tempInput.value});});"
+      "brightInput.addEventListener('input',()=>{brightValue.textContent=brightInput.value;sendUpdate({bright:brightInput.value});});"
+      "colorInput.addEventListener('input',()=>{colorValue.textContent=colorInput.value;sendUpdate({color:colorInput.value});});"
       "modeButtons.forEach(btn=>btn.addEventListener('click',()=>{modeButtons.forEach(b=>b.classList.remove('active'));btn.classList.add('active');sendUpdate({mode:btn.getAttribute('data-mode')});}));";
   page += R"(</script></section>)";
   page += htmlFooter();

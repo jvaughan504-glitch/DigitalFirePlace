@@ -65,6 +65,14 @@ ColorWeights hsvToRgb(float hueDegrees) {
 ColorWeights colorFromPercent(uint8_t colorPercent) {
   const float hue = (static_cast<float>(colorPercent) / 100.0f) * 360.0f;
   return hsvToRgb(hue);
+ColorWeights colorFromPercent(uint8_t colorPercent) {
+  const float t = static_cast<float>(colorPercent) / 100.0f;
+  const ColorWeights warm{1.0f, 0.7f, 0.25f};
+  const ColorWeights cool{0.5f, 0.7f, 1.0f};
+
+  return {warm.red + (cool.red - warm.red) * t,
+          warm.green + (cool.green - warm.green) * t,
+          warm.blue + (cool.blue - warm.blue) * t};
 }
 }
 
