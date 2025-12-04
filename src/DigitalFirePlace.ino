@@ -162,7 +162,7 @@ static float readThermistorCelsius() {
   steinhart += 1.0f / (FireplaceConfig::kNominalTemperatureC + 273.15f);
   steinhart = 1.0f / steinhart;
   steinhart -= 273.15f;
-  return steinhart;
+  return steinhart + FireplaceConfig::kThermistorOffsetC;
 }
 
 static void updateDisplay(float currentTemperatureC) {
