@@ -280,7 +280,14 @@ static String renderPage() {
       "tempInput.addEventListener('input',()=>{tempValue.textContent=tempInput.value;sendUpdate({temp:tempInput.value});});"
       "brightInput.addEventListener('input',()=>{brightValue.textContent=brightInput.value;sendUpdate({bright:brightInput.value});});"
       "colorInput.addEventListener('input',()=>{colorValue.textContent=hueFromPercent(colorInput.value);sendUpdate({color:colorInput.value});});"
-      "modeButtons.forEach(btn=>btn.addEventListener('click',()=>{modeButtons.forEach(b=>b.classList.remove('active'));btn.classList.add('active');sendUpdate({mode:btn.getAttribute('data-mode')});}));";
+      "function applyState(state){"
+      " if(state.temp!==undefined){tempInput.value=state.temp;tempValue.textContent=state.temp;}"
+      " if(state.bright!==undefined){brightInput.value=state.bright;brightValue.textContent=state.bright;}"
+      " if(state.color!==undefined){colorInput.value=state.color;colorValue.textContent=hueFromPercent(state.color);}" 
+      " if(state.mode!==undefined){modeButtons.forEach(btn=>{const active=btn.getAttribute('data-mode')===String(state.mode);btn.classList.toggle('active',active);});}}"
+      "async function refreshState(){try{const resp=await fetch('/state');if(!resp.ok)return;const data=await resp.json();applyState(data);}catch(err){console.error(err);}}"
+      "modeButtons.forEach(btn=>btn.addEventListener('click',()=>{modeButtons.forEach(b=>b.classList.remove('active'));btn.classList.add('active');sendUpdate({mode:btn.getAttribute('data-mode')});}));"
+      "refreshState();";
   page += R"(</script></section>)";
   page += htmlFooter();
   return page;
@@ -325,6 +332,22 @@ static void handleApply() {
   server.send(200, "text/plain", "OK");
 }
 
+static String renderStateJson() {
+  String json = "{";
+  json += "\"temp\":";
+  json += String(targetTemperatureC, 1);
+  json += ",\"bright\":";
+  json += String(brightnessToPercent(targetBrightness));
+  json += ",\"color\":";
+  json += String(targetColorPercent);
+  json += ",\"mode\":";
+  json += String(static_cast<int>(operatingMode));
+  json += "}";
+  return json;
+}
+
+static void handleState() { server.send(200, "application/json", renderStateJson()); }
+
 static void handleNotFound() { server.send(404, "text/plain", "Not found"); }
 
 static void startWifiAndServer() {
@@ -338,6 +361,7 @@ static void startWifiAndServer() {
 
   server.on("/", handleRoot);
   server.on("/apply", handleApply);
+  server.on("/state", handleState);
   server.onNotFound(handleNotFound);
   server.begin();
 }
