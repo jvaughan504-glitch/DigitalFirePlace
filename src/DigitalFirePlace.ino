@@ -116,8 +116,16 @@ static ButtonEvent updateButton(ButtonState &button) {
   return ButtonEvent::kNone;
 }
 
+static int readThermistorRawAverage() {
+  uint32_t total = 0;
+  for (uint8_t i = 0; i < FireplaceConfig::kThermistorSamples; ++i) {
+    total += analogRead(FireplaceConfig::kThermistorPin);
+  }
+  return static_cast<int>(total / FireplaceConfig::kThermistorSamples);
+}
+
 static float readThermistorCelsius() {
-  const int raw = analogRead(FireplaceConfig::kThermistorPin);
+  const int raw = readThermistorRawAverage();
   if (raw <= 0) {
     return -40.0f;
   }
