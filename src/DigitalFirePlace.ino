@@ -86,6 +86,19 @@ static uint8_t effectiveBrightness() {
   return operatingMode == OperatingMode::kHeatOnly ? 0 : targetBrightness;
 }
 
+static uint8_t brightnessToPercent(uint8_t brightness) {
+  const float percent =
+      (static_cast<float>(brightness) / static_cast<float>(FireplaceConfig::kMaxBrightness)) * 100.0f;
+  return static_cast<uint8_t>(round(percent));
+}
+
+static uint8_t brightnessFromPercent(int percent) {
+  const int clamped = clampValue(percent, 0, 100);
+  const float brightness =
+      (static_cast<float>(clamped) / 100.0f) * static_cast<float>(FireplaceConfig::kMaxBrightness);
+  return static_cast<uint8_t>(round(brightness));
+}
+
 static ButtonEvent updateButton(ButtonState &button) {
   const uint32_t now = millis();
   const bool reading = digitalRead(button.pin) == LOW;  // Active-low buttons
@@ -199,7 +212,7 @@ body{font-family:Arial,Helvetica,sans-serif;background:#111;color:#eee;margin:0;
 header{font-size:1.4rem;font-weight:700;margin-bottom:.5rem;}
 section{margin-bottom:1rem;}
 label{display:block;margin:.4rem 0 .2rem;}
-input[type=range]{width:100%;}
+input[type=range]{width:33%;}
 input,button{padding:.4rem;border-radius:4px;border:1px solid #555;background:#222;color:#eee;}
 button{cursor:pointer;}
 small{color:#aaa;display:block;margin-top:.4rem;}
@@ -224,29 +237,36 @@ static String renderPage() {
   page += " &deg;C<br/>Mode: ";
   page += modeLabel();
   page += "<br/>Brightness: ";
-  page += effectiveBrightness();
+  page += brightnessToPercent(effectiveBrightness());
+  page += "%";
   page += heaterActive ? "<br/><strong>HEAT ON</strong>" : "<br/>HEAT OFF";
   page += "</div>";
 
-  page += R"(<form action='/apply' method='get'><section><label for='temp'>Target Temp (&deg;C)</label><input type='range' step='0.5' min='15' max='30' id='temp' name='temp' value='";
+  page += R"(<section><label for='temp'>Target Temp (&deg;C)</label><input type='range' step='0.5' min='15' max='30' list='temp-scale' id='temp' name='temp' value='";
   page += String(targetTemperatureC, 1);
-  page += R"('><small>Current target: )";
+  page += R"('><datalist id='temp-scale'><option value='15'><option value='18'><option value='21'><option value='24'><option value='27'><option value='30'></datalist><small>Current target: <span id='temp-value'>)";
   page += String(targetTemperatureC, 1);
-  page += R"(</small></section><section><label for='bright'>Brightness (0-255)</label><input type='range' min='0' max='255' id='bright' name='bright' value='";
-  page += targetBrightness;
-  page += R"('><small>Current: )";
-  page += effectiveBrightness();
-  page += "</small></section><section><label>Mode</label><div class='mode-buttons'>";
-  page += "<button type='submit' name='mode' value='0";
+  page += R"(</span> &deg;C</small></section><section><label for='bright'>Brightness (0-100%)</label><input type='range' min='0' max='100' step='1' list='bright-scale' id='bright' name='bright' value='";
+  page += brightnessToPercent(targetBrightness);
+  page += R"('><datalist id='bright-scale'><option value='0'><option value='25'><option value='50'><option value='75'><option value='100'></datalist><small>Current: <span id='bright-value'>)";
+  page += brightnessToPercent(targetBrightness);
+  page += R"(</span>%</small></section><section><label>Mode</label><div class='mode-buttons'>)";
+  page += "<button type='button' data-mode='0";
   page += operatingMode == OperatingMode::kFireOnly ? "' class='active'" : "'";
   page += ">Fire only</button>";
-  page += "<button type='submit' name='mode' value='1";
+  page += "<button type='button' data-mode='1";
   page += operatingMode == OperatingMode::kFireAndHeat ? "' class='active'" : "'";
   page += ">Fire + Heat</button>";
-  page += "<button type='submit' name='mode' value='2";
+  page += "<button type='button' data-mode='2";
   page += operatingMode == OperatingMode::kHeatOnly ? "' class='active'" : "'";
-  page += ">Heat only</button>";
-  page += R"(</div></section><button type='submit'>Apply</button></form>)";
+  page += R"(>Heat only</button></div></section><script>)";
+  page +=
+      "const tempInput=document.getElementById('temp');const tempValue=document.getElementById('temp-value');const brightInput=document.getElementById('bright');const brightValue=document.getElementById('bright-value');const modeButtons=document.querySelectorAll('.mode-buttons button');"
+      "function sendUpdate(params){const url=new URL('/apply',window.location.href);Object.keys(params).forEach(k=>url.searchParams.set(k,params[k]));fetch(url.toString()).catch(console.error);}"
+      "tempInput.addEventListener('input',()=>{tempValue.textContent=tempInput.value;sendUpdate({temp:tempInput.value});});"
+      "brightInput.addEventListener('input',()=>{brightValue.textContent=brightInput.value;sendUpdate({bright:brightInput.value});});"
+      "modeButtons.forEach(btn=>btn.addEventListener('click',()=>{modeButtons.forEach(b=>b.classList.remove('active'));btn.classList.add('active');sendUpdate({mode:btn.getAttribute('data-mode')});}));";
+  page += R"(</script></section>)";
   page += htmlFooter();
   return page;
 }
@@ -261,9 +281,8 @@ static void handleApply() {
   }
 
   if (server.hasArg("bright")) {
-    const int requested = server.arg("bright").toInt();
-    targetBrightness = static_cast<uint8_t>(
-        clampValue(requested, 0, static_cast<int>(FireplaceConfig::kMaxBrightness)));
+    const int requestedPercent = server.arg("bright").toInt();
+    targetBrightness = brightnessFromPercent(requestedPercent);
   }
 
   if (server.hasArg("mode")) {
@@ -283,8 +302,7 @@ static void handleApply() {
     }
   }
 
-  server.sendHeader("Location", "/");
-  server.send(302, "text/plain", "Redirecting...");
+  server.send(200, "text/plain", "OK");
 }
 
 static void handleNotFound() { server.send(404, "text/plain", "Not found"); }
