@@ -28,6 +28,7 @@ static constexpr float kAdcVoltage = 3.3f;
 
 // Control configuration
 static constexpr float kTemperatureStep = 0.5f;
+static constexpr float kTemperatureSmoothAlpha = 0.2f;  // EMA coefficient for sensor noise
 static constexpr uint8_t kMinBrightness = 10;
 static constexpr uint8_t kMaxBrightness = 255;
 static constexpr uint8_t kBrightnessStep = 15;
