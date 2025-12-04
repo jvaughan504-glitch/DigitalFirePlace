@@ -35,7 +35,7 @@ static constexpr uint8_t kMaxBrightness = 255;
 static constexpr uint8_t kBrightnessStep = 15;
 static constexpr float kMinTargetTemperature = 15.0f;
 static constexpr float kMaxTargetTemperature = 30.0f;
-static constexpr float kHysteresis = 0.5f; // Degrees Celsius
+static constexpr float kHysteresis = 2.0f; // Degrees Celsius (+/- 1C)
 
 // Button debounce timings
 static constexpr uint32_t kDebounceDelayMs = 50;
