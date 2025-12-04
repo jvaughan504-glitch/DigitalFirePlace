@@ -45,6 +45,7 @@ static Adafruit_NeoPixel strip(FireplaceConfig::kNeoPixelCount, FireplaceConfig:
 static bool displayReady = false;
 static float targetTemperatureC = 21.0f;
 static uint8_t targetBrightness = 160;
+static uint8_t targetColorPercent = 0;
 static FireAnimation::State fireState{targetBrightness, 0};
 enum class OperatingMode { kFireOnly, kFireAndHeat, kHeatOnly };
 
@@ -239,6 +240,9 @@ static String renderPage() {
   page += "<br/>Brightness: ";
   page += brightnessToPercent(effectiveBrightness());
   page += "%";
+  page += "<br/>Colour: ";
+  page += String(targetColorPercent);
+  page += "% cool";
   page += heaterActive ? "<br/><strong>HEAT ON</strong>" : "<br/>HEAT OFF";
   page += "</div>";
 
@@ -250,6 +254,10 @@ static String renderPage() {
   page += brightnessToPercent(targetBrightness);
   page += R"('><datalist id='bright-scale'><option value='0'><option value='25'><option value='50'><option value='75'><option value='100'></datalist><small>Current: <span id='bright-value'>)";
   page += brightnessToPercent(targetBrightness);
+  page += R"(</span>%</small></section><section><label for='color'>Flame colour (warm to cool)</label><input type='range' min='0' max='100' step='1' list='color-scale' id='color' name='color' value='";
+  page += String(targetColorPercent);
+  page += R"('><datalist id='color-scale'><option value='0'><option value='25'><option value='50'><option value='75'><option value='100'></datalist><small>Cool tint: <span id='color-value'>)";
+  page += String(targetColorPercent);
   page += R"(</span>%</small></section><section><label>Mode</label><div class='mode-buttons'>)";
   page += "<button type='button' data-mode='0";
   page += operatingMode == OperatingMode::kFireOnly ? "' class='active'" : "'";
@@ -261,10 +269,11 @@ static String renderPage() {
   page += operatingMode == OperatingMode::kHeatOnly ? "' class='active'" : "'";
   page += R"(>Heat only</button></div></section><script>)";
   page +=
-      "const tempInput=document.getElementById('temp');const tempValue=document.getElementById('temp-value');const brightInput=document.getElementById('bright');const brightValue=document.getElementById('bright-value');const modeButtons=document.querySelectorAll('.mode-buttons button');"
+      "const tempInput=document.getElementById('temp');const tempValue=document.getElementById('temp-value');const brightInput=document.getElementById('bright');const brightValue=document.getElementById('bright-value');const colorInput=document.getElementById('color');const colorValue=document.getElementById('color-value');const modeButtons=document.querySelectorAll('.mode-buttons button');"
       "function sendUpdate(params){const url=new URL('/apply',window.location.href);Object.keys(params).forEach(k=>url.searchParams.set(k,params[k]));fetch(url.toString()).catch(console.error);}"
       "tempInput.addEventListener('input',()=>{tempValue.textContent=tempInput.value;sendUpdate({temp:tempInput.value});});"
       "brightInput.addEventListener('input',()=>{brightValue.textContent=brightInput.value;sendUpdate({bright:brightInput.value});});"
+      "colorInput.addEventListener('input',()=>{colorValue.textContent=colorInput.value;sendUpdate({color:colorInput.value});});"
       "modeButtons.forEach(btn=>btn.addEventListener('click',()=>{modeButtons.forEach(b=>b.classList.remove('active'));btn.classList.add('active');sendUpdate({mode:btn.getAttribute('data-mode')});}));";
   page += R"(</script></section>)";
   page += htmlFooter();
@@ -283,6 +292,11 @@ static void handleApply() {
   if (server.hasArg("bright")) {
     const int requestedPercent = server.arg("bright").toInt();
     targetBrightness = brightnessFromPercent(requestedPercent);
+  }
+
+  if (server.hasArg("color")) {
+    const int requestedColor = server.arg("color").toInt();
+    targetColorPercent = static_cast<uint8_t>(clampValue(requestedColor, 0, 100));
   }
 
   if (server.hasArg("mode")) {
@@ -450,7 +464,7 @@ void loop() {
   lastTemperatureC = currentTemperatureC;
   updateHeater(currentTemperatureC);
   updateDisplay(currentTemperatureC);
-  FireAnimation::update(strip, fireState, effectiveBrightness());
+  FireAnimation::update(strip, fireState, effectiveBrightness(), targetColorPercent);
   handleHttp();
 }
 
