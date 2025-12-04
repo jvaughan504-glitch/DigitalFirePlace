@@ -178,7 +178,18 @@ static void updateDisplay(float currentTemperatureC) {
 
 #ifdef ARDUINO_ARCH_ESP32
 static String htmlHeader() {
-  return R"(<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Fireplace</title><style>body{font-family:Arial,Helvetica,sans-serif;background:#111;color:#eee;margin:0;padding:1rem;}header{font-size:1.4rem;font-weight:700;margin-bottom:.5rem;}section{margin-bottom:1rem;}label{display:block;margin:.4rem 0 .2rem;}input,button{padding:.4rem;border-radius:4px;border:1px solid #555;background:#222;color:#eee;}button{cursor:pointer;}small{color:#aaa;display:block;margin-top:.4rem;}.mode-buttons{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.2rem;}.mode-buttons .active{background:#0a84ff;border-color:#0a84ff;color:#fff;}</style></head><body><header>Digital Fireplace</header><section>)";
+  return R"(<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Fireplace</title><style>
+body{font-family:Arial,Helvetica,sans-serif;background:#111;color:#eee;margin:0;padding:1rem;}
+header{font-size:1.4rem;font-weight:700;margin-bottom:.5rem;}
+section{margin-bottom:1rem;}
+label{display:block;margin:.4rem 0 .2rem;}
+input[type=range]{width:100%;}
+input,button{padding:.4rem;border-radius:4px;border:1px solid #555;background:#222;color:#eee;}
+button{cursor:pointer;}
+small{color:#aaa;display:block;margin-top:.4rem;}
+.mode-buttons{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.2rem;}
+.mode-buttons .active{background:#0a84ff;border-color:#0a84ff;color:#fff;}
+</style></head><body><header>Digital Fireplace</header><section>)";
 }
 
 static String htmlFooter() { return "</section></body></html>"; }
@@ -201,10 +212,13 @@ static String renderPage() {
   page += heaterActive ? "<br/><strong>HEAT ON</strong>" : "<br/>HEAT OFF";
   page += "</div>";
 
-  page += R"(<form action='/apply' method='get'><section><label for='temp'>Target Temp (&deg;C)</label><input type='number' step='0.5' min='15' max='30' id='temp' name='temp'>";
-  page += "<small>Current target: ";
+  page += R"(<form action='/apply' method='get'><section><label for='temp'>Target Temp (&deg;C)</label><input type='range' step='0.5' min='15' max='30' id='temp' name='temp' value='";
   page += String(targetTemperatureC, 1);
-  page += "</small></section><section><label for='bright'>Brightness (0-255)</label><input type='number' min='0' max='255' id='bright' name='bright'><small>Current: ";
+  page += R"('><small>Current target: )";
+  page += String(targetTemperatureC, 1);
+  page += R"(</small></section><section><label for='bright'>Brightness (0-255)</label><input type='range' min='0' max='255' id='bright' name='bright' value='";
+  page += targetBrightness;
+  page += R"('><small>Current: )";
   page += effectiveBrightness();
   page += "</small></section><section><label>Mode</label><div class='mode-buttons'>";
   page += "<button type='submit' name='mode' value='0";
