@@ -21,6 +21,8 @@ static constexpr float kSeriesResistor = 10000.0f;
 static constexpr float kNominalResistance = 10000.0f; // Resistance at 25C
 static constexpr float kNominalTemperatureC = 25.0f;
 static constexpr float kBCoefficient = 3950.0f;
+// Apply a fixed offset to compensate for sensor placement or calibration error (degrees C)
+static constexpr float kThermistorOffsetC = 14.0f;
 
 // ADC configuration
 static constexpr uint16_t kAdcMax = 4095; // 12-bit ADC
