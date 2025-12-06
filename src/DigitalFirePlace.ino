@@ -145,29 +145,7 @@ static float readTemperatureCelsius() {
   if (reading == DEVICE_DISCONNECTED_C) {
     return NAN;
   }
-  return static_cast<int>(total / FireplaceConfig::kThermistorSamples);
-}
-
-static float readThermistorCelsius() {
-  const int raw = readThermistorRawAverage();
-  if (raw <= 0) {
-    return -40.0f;
-  }
-
-  float resistance = FireplaceConfig::kSeriesResistor *
-                     ((FireplaceConfig::kAdcMax / static_cast<float>(raw)) - 1.0f);
-  if (resistance <= 0.0f) {
-    resistance = FireplaceConfig::kSeriesResistor;
-  }
-
-  float steinhart;
-  steinhart = resistance / FireplaceConfig::kNominalResistance;
-  steinhart = log(steinhart);
-  steinhart /= FireplaceConfig::kBCoefficient;
-  steinhart += 1.0f / (FireplaceConfig::kNominalTemperatureC + 273.15f);
-  steinhart = 1.0f / steinhart;
-  steinhart -= 273.15f;
-  return steinhart + FireplaceConfig::kThermistorOffsetC;
+  return reading;
 }
 
 static void updateDisplay(float currentTemperatureC) {
