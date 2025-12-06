@@ -1,6 +1,8 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_NeoPixel.h>
 #include <Adafruit_SSD1306.h>
+#include <DallasTemperature.h>
+#include <OneWire.h>
 #include <Wire.h>
 #include <math.h>
 
@@ -42,6 +44,8 @@ static ButtonState buttonMode{FireplaceConfig::kButtonMode, false, 0, 0, false};
 static Adafruit_SSD1306 display(128, 64, &Wire, FireplaceConfig::kOledResetPin);
 static Adafruit_NeoPixel strip(FireplaceConfig::kNeoPixelCount, FireplaceConfig::kNeoPixelPin,
                                NEO_GRB + NEO_KHZ800);
+static OneWire oneWire(FireplaceConfig::kTemperatureSensorPin);
+static DallasTemperature temperatureSensor(&oneWire);
 static bool displayReady = false;
 static float targetTemperatureC = 21.0f;
 static uint8_t targetBrightness = 160;
@@ -135,34 +139,13 @@ static ButtonEvent updateButton(ButtonState &button) {
   return ButtonEvent::kNone;
 }
 
-static int readThermistorRawAverage() {
-  uint32_t total = 0;
-  for (uint8_t i = 0; i < FireplaceConfig::kThermistorSamples; ++i) {
-    total += analogRead(FireplaceConfig::kThermistorPin);
+static float readTemperatureCelsius() {
+  temperatureSensor.requestTemperatures();
+  const float reading = temperatureSensor.getTempCByIndex(0);
+  if (reading == DEVICE_DISCONNECTED_C) {
+    return NAN;
   }
-  return static_cast<int>(total / FireplaceConfig::kThermistorSamples);
-}
-
-static float readThermistorCelsius() {
-  const int raw = readThermistorRawAverage();
-  if (raw <= 0) {
-    return -40.0f;
-  }
-
-  float resistance = FireplaceConfig::kSeriesResistor *
-                     ((FireplaceConfig::kAdcMax / static_cast<float>(raw)) - 1.0f);
-  if (resistance <= 0.0f) {
-    resistance = FireplaceConfig::kSeriesResistor;
-  }
-
-  float steinhart;
-  steinhart = resistance / FireplaceConfig::kNominalResistance;
-  steinhart = log(steinhart);
-  steinhart /= FireplaceConfig::kBCoefficient;
-  steinhart += 1.0f / (FireplaceConfig::kNominalTemperatureC + 273.15f);
-  steinhart = 1.0f / steinhart;
-  steinhart -= 273.15f;
-  return steinhart;
+  return reading;
 }
 
 static void updateDisplay(float currentTemperatureC) {
@@ -204,6 +187,9 @@ static void updateDisplay(float currentTemperatureC) {
 }
 
 static float smoothTemperature(float measurementC) {
+  if (isnan(measurementC)) {
+    return lastTemperatureC;
+  }
   if (isnan(lastTemperatureC)) {
     return measurementC;
   }
@@ -471,6 +457,9 @@ void setup() {
   analogReadResolution(12);
 #endif
 
+  temperatureSensor.begin();
+  temperatureSensor.setResolution(FireplaceConfig::kSensorResolutionBits);
+
   displayReady = beginDisplay();
   if (!displayReady) {
     Serial.println("OLED init failed. Check SDA/SCL wiring and I2C address.");
@@ -478,7 +467,7 @@ void setup() {
     drawSplash();
   }
 
-  randomSeed(analogRead(FireplaceConfig::kThermistorPin));
+  randomSeed(analogRead(FireplaceConfig::kTemperatureSensorPin));
 
   FireAnimation::begin(strip, effectiveBrightness());
   fireState.baseBrightness = effectiveBrightness();
@@ -489,7 +478,7 @@ void setup() {
 
 void loop() {
   handleButtons();
-  const float measuredTemperatureC = readThermistorCelsius();
+  const float measuredTemperatureC = readTemperatureCelsius();
   const float currentTemperatureC = smoothTemperature(measuredTemperatureC);
   lastTemperatureC = currentTemperatureC;
   updateHeater(currentTemperatureC);
