@@ -453,6 +453,9 @@ void setup() {
   pinMode(FireplaceConfig::kButtonBrightDown, INPUT_PULLUP);
   pinMode(FireplaceConfig::kButtonMode, INPUT_PULLUP);
 
+  // Ensure the 1-Wire bus idles high even if the external pull-up is weak or missing.
+  pinMode(FireplaceConfig::kTemperatureSensorPin, INPUT_PULLUP);
+
 #ifdef ARDUINO_ARCH_ESP32
   analogReadResolution(12);
 #endif
@@ -467,7 +470,11 @@ void setup() {
     drawSplash();
   }
 
-  randomSeed(analogRead(FireplaceConfig::kTemperatureSensorPin));
+#ifdef ARDUINO_ARCH_ESP32
+  randomSeed(esp_random());
+#else
+  randomSeed(micros());
+#endif
 
   FireAnimation::begin(strip, effectiveBrightness());
   fireState.baseBrightness = effectiveBrightness();
