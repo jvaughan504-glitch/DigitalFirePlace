@@ -61,6 +61,8 @@ static float lastTemperatureC = NAN;
 static WebServer server(80);
 #endif
 
+// ----------------- Helpers -----------------
+
 static const char *modeLabel() {
   switch (operatingMode) {
     case OperatingMode::kFireOnly:
@@ -107,6 +109,16 @@ static uint8_t brightnessFromPercent(int percent) {
 static uint16_t hueDegreesFromPercent(uint8_t colorPercent) {
   const float hue = (static_cast<float>(colorPercent) / 100.0f) * 360.0f;
   return static_cast<uint16_t>(round(hue));
+}
+
+// Approximate human-readable colour name for flame
+static const char* colorNameFromPercent(uint8_t p) {
+  if (p < 12)  return "Red";
+  if (p < 28)  return "Orange";
+  if (p < 48)  return "Green";
+  if (p < 68)  return "Blue";
+  if (p < 88)  return "Violet";
+  return "Red";
 }
 
 static ButtonEvent updateButton(ButtonState &button) {
@@ -161,13 +173,13 @@ static void updateDisplay(float currentTemperatureC) {
   display.setCursor(0, 10);
   display.print(currentTemperatureC, 1);
   display.cp437(true);
-  //display.write(247);  // Degree symbol
+  // display.write(247);  // Degree symbol
   display.println("C");
 
   display.setCursor(0, 25);
   display.println("Set:");
   display.print(targetTemperatureC, 1);
-  //display.write(247);
+  // display.write(247);
   display.println("C");
 
   display.setTextSize(1);
@@ -197,89 +209,338 @@ static float smoothTemperature(float measurementC) {
   return (alpha * measurementC) + ((1.0f - alpha) * lastTemperatureC);
 }
 
+// ----------------- Web UI (ESP32) -----------------
 #ifdef ARDUINO_ARCH_ESP32
+
 static String htmlHeader() {
-  return R"(<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Fireplace</title><style>
-body{font-family:Arial,Helvetica,sans-serif;background:#111;color:#eee;margin:0;padding:1rem;}
-header{font-size:1.4rem;font-weight:700;margin-bottom:.5rem;}
-section{margin-bottom:1rem;}
-label{display:block;margin:.4rem 0 .2rem;}
-input[type=range]{width:33%;}
-input,button{padding:.4rem;border-radius:4px;border:1px solid #555;background:#222;color:#eee;}
-button{cursor:pointer;}
-small{color:#aaa;display:block;margin-top:.4rem;}
-.mode-buttons{display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.2rem;}
-.mode-buttons .active{background:#0a84ff;border-color:#0a84ff;color:#fff;}
-</style></head><body><header>Digital Fireplace</header><section>)";
+  String h;
+  h  = "<!doctype html><html><head><meta charset='utf-8'>";
+  h += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
+  h += "<title>Digital Fireplace</title><style>";
+
+  // LIGHT MODE
+  h += "@media (prefers-color-scheme: light){";
+  h += "body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;";
+  h += "background:#f5f5f5;color:#111;display:flex;justify-content:center;align-items:center;";
+  h += "min-height:100vh;}";
+  h += ".card{background:#ffffff;border-radius:16px;padding:20px 18px;max-width:420px;width:100%;";
+  h += "box-sizing:border-box;box-shadow:0 10px 30px rgba(0,0,0,0.12);border:1px solid #e0e0e0;";
+  h += "overflow:hidden;}";
+  h += ".title{font-size:1.2rem;font-weight:600;margin:0 0 4px 0;color:#222;}";
+  h += ".subtitle{font-size:0.85rem;color:#666;margin:0 0 16px 0;}";
+  h += ".stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px;}";
+  h += ".stat-label{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:#888;margin-bottom:2px;}";
+  h += ".stat-value{font-size:1.15rem;font-weight:600;}";
+  h += ".stat-value-heat{font-size:0.9rem;font-weight:600;}";
+  h += ".stat-pill{font-size:0.75rem;border-radius:999px;padding:4px 8px;background:#fff;";
+  h += "border:1px solid #ddd;display:inline-flex;align-items:center;gap:6px;margin-top:2px;}";
+  h += ".color-chip{display:inline-block;width:12px;height:12px;border-radius:999px;border:1px solid #ccc;}";
+  h += ".section{margin-top:10px;}";
+  h += "label{display:block;font-size:0.8rem;margin-bottom:4px;color:#555;}";
+  h += "input[type=range]{width:100%;box-sizing:border-box;margin:0;}";
+  h += "input,button{font-family:inherit;font-size:0.85rem;border-radius:999px;border:1px solid #ccc;";
+  h += "padding:6px 10px;background:#fafafa;color:#111;}";
+  h += ".mode-buttons{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}";
+  h += ".mode-buttons button{flex:1 1 auto;background:#f3f4f6;border-color:#d1d5db;}";
+  h += ".mode-buttons button.active{background:#0ea5e9;color:#fff;border-color:#0ea5e9;}";
+  h += ".status-line{font-size:0.75rem;color:#666;margin-top:10px;}";
+  h += ".scale-row{display:flex;justify-content:space-between;font-size:0.7rem;color:#777;margin-top:2px;}";
+  h += "}";
+
+  // DARK MODE
+  h += "@media (prefers-color-scheme: dark){";
+  h += "body{margin:0;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;";
+  h += "background:#020617;color:#e5e7eb;display:flex;justify-content:center;align-items:center;";
+  h += "min-height:100vh;}";
+  h += ".card{background:#020617;border-radius:16px;padding:20px 18px;max-width:420px;width:100%;";
+  h += "box-sizing:border-box;box-shadow:0 20px 40px rgba(0,0,0,0.7);border:1px solid rgba(148,163,184,0.35);";
+  h += "overflow:hidden;}";
+  h += ".title{font-size:1.2rem;font-weight:600;margin:0 0 4px 0;color:#f9fafb;}";
+  h += ".subtitle{font-size:0.8rem;color:#9ca3af;margin:0 0 16px 0;}";
+  h += ".stat-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px;}";
+  h += ".stat-label{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;color:#9ca3af;margin-bottom:2px;}";
+  h += ".stat-value{font-size:1.15rem;font-weight:600;}";
+  h += ".stat-value-heat{font-size:0.9rem;font-weight:600;}";
+  h += ".stat-pill{font-size:0.75rem;border-radius:999px;padding:4px 8px;";
+  h += "background:rgba(15,23,42,0.9);border:1px solid rgba(148,163,184,0.5);display:inline-flex;align-items:center;gap:6px;margin-top:2px;}";
+  h += ".color-chip{display:inline-block;width:12px;height:12px;border-radius:999px;border:1px solid #64748b;}";
+  h += ".section{margin-top:10px;}";
+  h += "label{display:block;font-size:0.8rem;margin-bottom:4px;color:#e5e7eb;}";
+  h += "input[type=range]{width:100%;box-sizing:border-box;margin:0;}";
+  h += "input,button{font-family:inherit;font-size:0.85rem;border-radius:999px;border:1px solid #334155;";
+  h += "padding:6px 10px;background:#020617;color:#e5e7eb;}";
+  h += ".mode-buttons{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}";
+  h += ".mode-buttons button{flex:1 1 auto;background:#020617;border-color:#334155;}";
+  h += ".mode-buttons button.active{background:#0ea5e9;color:#fff;border-color:#0ea5e9;}";
+  h += ".status-line{font-size:0.75rem;color:#9ca3af;margin-top:10px;}";
+  h += ".scale-row{display:flex;justify-content:space-between;font-size:0.7rem;color:#9ca3af;margin-top:2px;}";
+  h += "}";
+
+  h += "</style></head><body>";
+  return h;
 }
 
-static String htmlFooter() { return "</section></body></html>"; }
+static String htmlFooter() {
+  return "</body></html>";
+}
 
 static String renderPage() {
   String page = htmlHeader();
-  page += "<div>Room: ";
+
+  page += "<div class='card'>";
+  page += "<h1 class='title'>Digital Fireplace</h1>";
+  page += "<p class='subtitle'>Virtual flame with thermostat control</p>";
+
+  // Live status block
+  page += "<div class='stat-grid'>";
+  page += "  <div>";
+  page += "    <div class='stat-label'>Room</div>";
+  page += "    <div id='roomTemp' class='stat-value'>";
   if (isnan(lastTemperatureC)) {
-    page += "--";
+    page += "--.- &deg;C";
   } else {
     page += String(lastTemperatureC, 1);
     page += " &deg;C";
   }
-  page += "<br/>Set: ";
+  page += "    </div>";
+  page += "  </div>";
+
+  page += "  <div>";
+  page += "    <div class='stat-label'>Set</div>";
+  page += "    <div id='setTemp' class='stat-value'>";
   page += String(targetTemperatureC, 1);
-  page += " &deg;C<br/>Mode: ";
+  page += " &deg;C</div>";
+  page += "  </div>";
+
+  page += "  <div>";
+  page += "    <div class='stat-label'>Mode</div>";
+  page += "    <div id='modeLabel' class='stat-value'>";
   page += modeLabel();
-  page += "<br/>Brightness: ";
-  page += brightnessToPercent(effectiveBrightness());
-  page += "%";
-  page += "<br/>Colour: ";
-  page += String(hueDegreesFromPercent(targetColorPercent));
-  page += "&deg; hue";
-  page += heaterActive ? "<br/><strong>HEAT ON</strong>" : "<br/>HEAT OFF";
+  page += "    </div>";
+  page += "  </div>";
+
+  page += "  <div>";
+  page += "    <div class='stat-label'>Heat</div>";
+  page += "    <div id='heatStatus' class='stat-value-heat'>";
+  page += heaterActive ? "HEAT ON" : "HEAT OFF";
+  page += "    </div>";
+  page += "  </div>";
   page += "</div>";
 
-  page += R"(<section><label for='temp'>Target Temp (&deg;C)</label><input type='range' step='0.5' min='15' max='30' list='temp-scale' id='temp' name='temp' value='";
+  page += "<div class='stat-pill'>";
+  page += "Brightness: <span id='brightLabel'>";
+  page += brightnessToPercent(effectiveBrightness());
+  page += "</span>%";
+  page += "</div> ";
+
+  page += "<div class='stat-pill'>";
+  page += "Colour: <span id='colorLabel'>";
+  page += colorNameFromPercent(targetColorPercent);
+  page += "</span>";
+  page += "<span id='colorChip' class='color-chip'></span>";
+  page += "</div>";
+
+  // Controls: temperature
+  page += "<div class='section'>";
+  page += "<label for='temp'>Target temperature (&deg;C)</label>";
+  page += "<input type='range' id='temp' name='temp' step='0.5' min='15' max='30' list='temp-scale' value='";
   page += String(targetTemperatureC, 1);
-  page += R"('><datalist id='temp-scale'><option value='15'><option value='18'><option value='21'><option value='24'><option value='27'><option value='30'></datalist><small>Current target: <span id='temp-value'>)";
+  page += "'>";
+  page += "<datalist id='temp-scale'><option value='15'><option value='18'><option value='21'><option value='24'><option value='27'><option value='30'></datalist>";
+  page += "<div class='scale-row'><span>15</span><span>18</span><span>21</span><span>24</span><span>27</span><span>30</span></div>";
+  page += "<div class='status-line'>Current target: <span id='temp-value'>";
   page += String(targetTemperatureC, 1);
-  page += R"(</span> &deg;C</small></section><section><label for='bright'>Brightness (0-100%)</label><input type='range' min='0' max='100' step='1' list='bright-scale' id='bright' name='bright' value='";
+  page += "</span> &deg;C</div>";
+  page += "</div>";
+
+  // Controls: brightness
+  page += "<div class='section'>";
+  page += "<label for='bright'>Brightness (0–100%)</label>";
+  page += "<input type='range' id='bright' name='bright' min='0' max='100' step='1' list='bright-scale' value='";
   page += brightnessToPercent(targetBrightness);
-  page += R"('><datalist id='bright-scale'><option value='0'><option value='25'><option value='50'><option value='75'><option value='100'></datalist><small>Current: <span id='bright-value'>)";
+  page += "'>";
+  page += "<datalist id='bright-scale'><option value='0'><option value='25'><option value='50'><option value='75'><option value='100'></datalist>";
+  page += "<div class='scale-row'><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>";
+  page += "<div class='status-line'>Current brightness: <span id='bright-value'>";
   page += brightnessToPercent(targetBrightness);
-  page += R"(</span>%</small></section><section><label for='color'>Flame colour (full spectrum)</label><input type='range' min='0' max='100' step='1' list='color-scale' id='color' name='color' value='";
+  page += "</span>%</div>";
+  page += "</div>";
+
+  // Controls: colour
+  page += "<div class='section'>";
+  page += "<label for='color'>Flame colour (full spectrum)</label>";
+  page += "<input type='range' id='color' name='color' min='0' max='100' step='1' list='color-scale' value='";
   page += String(targetColorPercent);
-  page += R"('><datalist id='color-scale'><option value='0'><option value='25'><option value='50'><option value='75'><option value='100'></datalist><small>Hue: <span id='color-value'>)";
-  page += String(hueDegreesFromPercent(targetColorPercent));
-  page += R"(</span>&deg;</small></section><section><label>Mode</label><div class='mode-buttons'>)";
+  page += "'>";
+  page += "<datalist id='color-scale'><option value='0'><option value='25'><option value='50'><option value='75'><option value='100'></datalist>";
+  page += "<div class='scale-row'><span>Red</span><span>Green</span><span>Blue</span><span>Violet</span><span>Red</span></div>";
+  page += "<div class='status-line'>Colour: <span id='color-value'>";
+  page += colorNameFromPercent(targetColorPercent);
+  page += "</span></div>";
+  page += "</div>";
+
+  // Controls: mode
+  page += "<div class='section'>";
+  page += "<label>Mode</label>";
+  page += "<div class='mode-buttons'>";
   page += "<button type='button' data-mode='0";
-  page += operatingMode == OperatingMode::kFireOnly ? "' class='active'" : "'";
-  page += ">Fire only</button>";
+  page += (operatingMode == OperatingMode::kFireOnly ? "' class='active'>" : "'>");
+  page += "Fire only</button>";
   page += "<button type='button' data-mode='1";
-  page += operatingMode == OperatingMode::kFireAndHeat ? "' class='active'" : "'";
-  page += ">Fire + Heat</button>";
+  page += (operatingMode == OperatingMode::kFireAndHeat ? "' class='active'>" : "'>");
+  page += "Fire + Heat</button>";
   page += "<button type='button' data-mode='2";
-  page += operatingMode == OperatingMode::kHeatOnly ? "' class='active'" : "'";
-  page += R"(>Heat only</button></div></section><script>)";
-  page +=
-      "const tempInput=document.getElementById('temp');const tempValue=document.getElementById('temp-value');const brightInput=document.getElementById('bright');const brightValue=document.getElementById('bright-value');const colorInput=document.getElementById('color');const colorValue=document.getElementById('color-value');const modeButtons=document.querySelectorAll('.mode-buttons button');"
-      "const hueFromPercent=p=>Math.round((Number(p)/100)*360);"
-      "function sendUpdate(params){const url=new URL('/apply',window.location.href);Object.keys(params).forEach(k=>url.searchParams.set(k,params[k]));fetch(url.toString()).catch(console.error);}"
-      "tempInput.addEventListener('input',()=>{tempValue.textContent=tempInput.value;sendUpdate({temp:tempInput.value});});"
-      "brightInput.addEventListener('input',()=>{brightValue.textContent=brightInput.value;sendUpdate({bright:brightInput.value});});"
-      "colorInput.addEventListener('input',()=>{colorValue.textContent=hueFromPercent(colorInput.value);sendUpdate({color:colorInput.value});});"
-      "function applyState(state){"
-      " if(state.temp!==undefined){tempInput.value=state.temp;tempValue.textContent=state.temp;}"
-      " if(state.bright!==undefined){brightInput.value=state.bright;brightValue.textContent=state.bright;}"
-      " if(state.color!==undefined){colorInput.value=state.color;colorValue.textContent=hueFromPercent(state.color);}" 
-      " if(state.mode!==undefined){modeButtons.forEach(btn=>{const active=btn.getAttribute('data-mode')===String(state.mode);btn.classList.toggle('active',active);});}}"
-      "async function refreshState(){try{const resp=await fetch('/state');if(!resp.ok)return;const data=await resp.json();applyState(data);}catch(err){console.error(err);}}"
-      "modeButtons.forEach(btn=>btn.addEventListener('click',()=>{modeButtons.forEach(b=>b.classList.remove('active'));btn.classList.add('active');sendUpdate({mode:btn.getAttribute('data-mode')});}));"
-      "refreshState();";
-  page += R"(</script></section>)";
+  page += (operatingMode == OperatingMode::kHeatOnly ? "' class='active'>" : "'>");
+  page += "Heat only</button>";
+  page += "</div>";
+  page += "</div>";
+
+  page += "<div id='status' class='status-line'>Syncing with fireplace...</div>";
+
+  // Script: auto-refresh + controls + colour chip
+  page += "<script>";
+  page += "const tempInput=document.getElementById('temp');";
+  page += "const tempValue=document.getElementById('temp-value');";
+  page += "const brightInput=document.getElementById('bright');";
+  page += "const brightValue=document.getElementById('bright-value');";
+  page += "const colorInput=document.getElementById('color');";
+  page += "const colorValue=document.getElementById('color-value');";
+  page += "const modeButtons=document.querySelectorAll('.mode-buttons button');";
+  page += "const roomEl=document.getElementById('roomTemp');";
+  page += "const setEl=document.getElementById('setTemp');";
+  page += "const modeLabelEl=document.getElementById('modeLabel');";
+  page += "const brightLabelEl=document.getElementById('brightLabel');";
+  page += "const colorLabelEl=document.getElementById('colorLabel');";
+  page += "const heatEl=document.getElementById('heatStatus');";
+  page += "const statusEl=document.getElementById('status');";
+  page += "const colorChip=document.getElementById('colorChip');";
+
+  page += "const colorNameFromPercent=p=>{";
+  page += " const n=Number(p);";
+  page += " if(n<12) return 'Red';";
+  page += " if(n<28) return 'Orange';";
+  page += " if(n<48) return 'Green';";
+  page += " if(n<68) return 'Blue';";
+  page += " if(n<88) return 'Violet';";
+  page += " return 'Red';";
+  page += "};";
+
+  page += "const colorChipFromPercent=p=>{";
+  page += " const n=Number(p);";
+  page += " const hue=Math.round((n/100)*360);";
+  page += " const color=`hsl(${hue},90%,60%)`;";  // red (0) through blue back to red (360)
+  page += " return color;";
+  page += "};";
+
+  page += "function updateChip(p){";
+  page += " const c=colorChipFromPercent(p);";
+  page += " if(colorChip){";
+  page += "   colorChip.style.backgroundColor=c;";
+  page += "   colorChip.style.boxShadow=`0 0 6px ${c}`;";
+  page += " }";
+  page += "}";
+
+  page += "function sendUpdate(params){";
+  page += " const url=new URL('/apply',window.location.href);";
+  page += " Object.keys(params).forEach(k=>url.searchParams.set(k,params[k]));";
+  page += " fetch(url.toString()).catch(console.error);";
+  page += "}";
+
+  page += "tempInput.addEventListener('input',()=>{";
+  page += " tempValue.textContent=tempInput.value;";
+  page += " setEl.textContent=tempInput.value+' \\u00B0C';";
+  page += " sendUpdate({temp:tempInput.value});";
+  page += "});";
+
+  page += "brightInput.addEventListener('input',()=>{";
+  page += " brightValue.textContent=brightInput.value;";
+  page += " brightLabelEl.textContent=brightInput.value;";
+  page += " sendUpdate({bright:brightInput.value});";
+  page += "});";
+
+  page += "colorInput.addEventListener('input',()=>{";
+  page += " const name=colorNameFromPercent(colorInput.value);";
+  page += " colorValue.textContent=name;";
+  page += " colorLabelEl.textContent=name;";
+  page += " updateChip(colorInput.value);";
+  page += " sendUpdate({color:colorInput.value});";
+  page += "});";
+
+  page += "function modeLabelFromInt(m){";
+  page += " if(m===0) return 'Fire';";
+  page += " if(m===2) return 'Heat';";
+  page += " return 'Fire+Heat';";
+  page += "}";
+
+  page += "function applyState(state){";
+  page += " if(state.temp!==undefined){";
+  page += "   tempInput.value=state.temp;";
+  page += "   tempValue.textContent=state.temp;";
+  page += "   setEl.textContent=state.temp+' \\u00B0C';";
+  page += " }";
+  page += " if(state.bright!==undefined){";
+  page += "   brightInput.value=state.bright;";
+  page += "   brightValue.textContent=state.bright;";
+  page += "   brightLabelEl.textContent=state.bright;";
+  page += " }";
+  page += " if(state.color!==undefined){";
+  page += "   colorInput.value=state.color;";
+  page += "   const name=colorNameFromPercent(state.color);";
+  page += "   colorValue.textContent=name;";
+  page += "   colorLabelEl.textContent=name;";
+  page += "   updateChip(state.color);";
+  page += " }";
+  page += " if(state.mode!==undefined){";
+  page += "   modeButtons.forEach(btn=>{";
+  page += "     const active=btn.getAttribute('data-mode')===String(state.mode);";
+  page += "     btn.classList.toggle('active',active);";
+  page += "   });";
+  page += "   modeLabelEl.textContent=modeLabelFromInt(state.mode);";
+  page += " }";
+  page += " if(state.room!==undefined){";
+  page += "   if(state.room===null){";
+  page += "     roomEl.textContent='--.- \\u00B0C';";
+  page += "   }else{";
+  page += "     roomEl.textContent=Number(state.room).toFixed(1)+' \\u00B0C';";
+  page += "   }";
+  page += " }";
+  page += " if(state.heat!==undefined){";
+  page += "   heatEl.textContent=state.heat? 'HEAT ON':'HEAT OFF';";
+  page += " }";
+  page += "}";
+
+  page += "async function refreshState(){";
+  page += " try{";
+  page += "   const resp=await fetch('/state',{cache:'no-store'});";
+  page += "   if(!resp.ok){statusEl.textContent='Sync error: '+resp.status;return;}";
+  page += "   const data=await resp.json();";
+  page += "   applyState(data);";
+  page += "   statusEl.textContent='Last sync: '+new Date().toLocaleTimeString();";
+  page += " }catch(err){";
+  page += "   statusEl.textContent='Sync failed';";
+  page += " }";
+  page += "}";
+
+  page += "modeButtons.forEach(btn=>btn.addEventListener('click',()=>{";
+  page += " modeButtons.forEach(b=>b.classList.remove('active'));";
+  page += " btn.classList.add('active');";
+  page += " const m=btn.getAttribute('data-mode');";
+  page += " sendUpdate({mode:m});";
+  page += "}));";
+
+  page += "updateChip(colorInput.value);";  // initial chip
+  page += "refreshState();";
+  page += "setInterval(refreshState,2000);";
+  page += "</script>";
+
+  page += "</div>";
   page += htmlFooter();
   return page;
 }
 
-static void handleRoot() { server.send(200, "text/html", renderPage()); }
+static void handleRoot() {
+  server.send(200, "text/html", renderPage());
+}
 
 static void handleApply() {
   if (server.hasArg("temp")) {
@@ -301,17 +562,10 @@ static void handleApply() {
   if (server.hasArg("mode")) {
     const int requestedMode = server.arg("mode").toInt();
     switch (requestedMode) {
-      case 0:
-        operatingMode = OperatingMode::kFireOnly;
-        break;
-      case 1:
-        operatingMode = OperatingMode::kFireAndHeat;
-        break;
-      case 2:
-        operatingMode = OperatingMode::kHeatOnly;
-        break;
-      default:
-        break;
+      case 0: operatingMode = OperatingMode::kFireOnly; break;
+      case 1: operatingMode = OperatingMode::kFireAndHeat; break;
+      case 2: operatingMode = OperatingMode::kHeatOnly; break;
+      default: break;
     }
   }
 
@@ -328,20 +582,32 @@ static String renderStateJson() {
   json += String(targetColorPercent);
   json += ",\"mode\":";
   json += String(static_cast<int>(operatingMode));
+  json += ",\"room\":";
+  if (isnan(lastTemperatureC)) {
+    json += "null";
+  } else {
+    json += String(lastTemperatureC, 1);
+  }
+  json += ",\"heat\":";
+  json += heaterActive ? "1" : "0";
   json += "}";
   return json;
 }
 
-static void handleState() { server.send(200, "application/json", renderStateJson()); }
+static void handleState() {
+  server.send(200, "application/json", renderStateJson());
+}
 
-static void handleNotFound() { server.send(404, "text/plain", "Not found"); }
+static void handleNotFound() {
+  server.send(404, "text/plain", "Not found");
+}
 
 static void startWifiAndServer() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(FireplaceConfig::kWifiSsid, FireplaceConfig::kWifiPassword);
   const uint32_t start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start <
-                                              FireplaceConfig::kWifiConnectTimeoutMs) {
+  while (WiFi.status() != WL_CONNECTED &&
+         millis() - start < FireplaceConfig::kWifiConnectTimeoutMs) {
     delay(100);
   }
 
@@ -352,11 +618,16 @@ static void startWifiAndServer() {
   server.begin();
 }
 
-static void handleHttp() { server.handleClient(); }
-#else
+static void handleHttp() {
+  server.handleClient();
+}
+
+#else   // not ESP32
 static void startWifiAndServer() {}
 static void handleHttp() {}
-#endif
+#endif  // ARDUINO_ARCH_ESP32
+
+// ----------------- Heater / Buttons / Display / Loop -----------------
 
 static void updateHeater(float currentTemperatureC) {
   const bool heatEnabled = operatingMode != OperatingMode::kFireOnly;
@@ -442,6 +713,8 @@ static bool beginDisplay() {
   return display.begin(SSD1306_SWITCHCAPVCC, alternateAddress);
 }
 
+// ----------------- Arduino setup / loop -----------------
+
 void setup() {
   Serial.begin(115200);
   pinMode(FireplaceConfig::kRelayPin, OUTPUT);
@@ -493,4 +766,3 @@ void loop() {
   FireAnimation::update(strip, fireState, effectiveBrightness(), targetColorPercent);
   handleHttp();
 }
-
